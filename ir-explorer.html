@@ -1704,6 +1704,12 @@
       const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
       const src = ctx.createBufferSource();
       src.buffer = buf; src.connect(ctx.destination); src.start(0);
+      // iOS tears down the hardware audio session ~1 s after the last sound ends.
+      // A silent oscillator (gain = 0) keeps the session alive indefinitely so
+      // sources started after async loading still reach the speaker.
+      const osc = ctx.createOscillator();
+      const g   = ctx.createGain(); g.gain.value = 0;
+      osc.connect(g); g.connect(ctx.destination); osc.start(0);
     }
 
     // ── AudioWorklet recorder ─────────────────────────────────────────────────
@@ -1812,14 +1818,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loopStart = loopStart * audioBuffer.duration;
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
 
-      // iOS: ctx.currentTime can be stuck at 0 even when state='running', so any
-      // scheduled time > 0 never arrives. Use start(0) for immediate playback.
-      { const W = hasIR ? slotWeights(irSlots, blendPt) : [];
-        const wSum = W.reduce((a,b)=>a+b,0);
-        setStatus(`sr=${ctx.sampleRate} t=${ctx.currentTime.toFixed(3)} igain=${inputGainDb.toFixed(0)}dB nIR=${irSlots.length} wSum=${wSum.toFixed(2)}`); }
-
-      sourceNode.start(0, sourceNode.loopStart);
-      playStart = ctx.currentTime;
+      const startAt = ctx.currentTime + 0.05;
+      sourceNode.start(startAt, sourceNode.loopStart);
+      playStart = startAt;
       isPlaying = true;
       playIcon.className = 'icon-pause';
       btnPlay.childNodes[1].textContent = ' Pause';
@@ -1828,11 +1829,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       // Also start right panel if recorded
       if (rightAudioBuffer) {
-        try {
-          const T_L = (loopEnd - loopStart) * audioBuffer.duration;
-          const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
-          startRightPlay(playStart + effectivePhase, 0);
-        } catch(e) { setStatus('rightPlay err: ' + e.message); }
+        const T_L = (loopEnd - loopStart) * audioBuffer.duration;
+        const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+        startRightPlay(playStart + effectivePhase, 0);
       }
       updateRightRecordBtn();
     }
@@ -2209,21 +2208,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
-      const ctx = getAudioCtx();
-      // iOS: audio sources MUST be started synchronously in the gesture handler.
-      // Any await before start() prevents hardware routing to the speaker.
-      const resumeP = ctx.resume();
-      try {
-        const n = Math.floor(ctx.sampleRate * 1.5);
-        const tb = ctx.createBuffer(1, n, ctx.sampleRate);
-        const td = tb.getChannelData(0);
-        for (let i = 0; i < n; i++) td[i] = Math.sin(2 * Math.PI * 440 * i / ctx.sampleRate) * 0.5;
-        const ts = ctx.createBufferSource(); ts.buffer = tb;
-        ts.connect(ctx.destination); ts.start(0);
-      } catch(_) {}
-      setStatus('tap t=' + ctx.currentTime.toFixed(3));
       if (isPlaying) { stopPlay(); return; }
-      resumeP.then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
+      const ctx = getAudioCtx();
+      ctx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
     });
 
     btnReset.addEventListener('click', () => {
