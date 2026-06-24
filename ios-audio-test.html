@@ -30,6 +30,8 @@
 <button id="t6">Test 6: BiquadFilter chain (mimics IR explorer EQ)</button>
 <button id="t7">Test 7: ConvolverNode with tiny impulse</button>
 <button id="t8">Test 8: Fresh AudioContext per call</button>
+<button id="t9">Test 9: HTML5 &lt;audio&gt; element (data URL beep)</button>
+<button id="t10">Test 10: HTML5 audio first, THEN Web Audio osc</button>
 
 <hr>
 <h2 style="font-size:0.9rem">Results — tap ✓ or ✗ for each:</h2>
@@ -182,6 +184,58 @@ document.getElementById('t8').addEventListener('click', () => {
   osc.start(); osc.stop(c.currentTime + 1);
   log(`Test 8 (fresh ctx) started\nfresh: state=${c.state} sr=${c.sampleRate} t=${c.currentTime.toFixed(3)}`);
   recordResult('t8', `fresh ctx every tap, sr=${c.sampleRate}`);
+});
+
+// Build a 1s 440Hz sine WAV as a data: URL once
+function buildBeepDataUrl() {
+  const sr = 44100, N = sr;
+  const data = new Int16Array(N);
+  for (let i = 0; i < N; i++) data[i] = Math.round(0.2 * 32767 * Math.sin(2*Math.PI*440*i/sr));
+  const ab = new ArrayBuffer(44 + data.byteLength);
+  const dv = new DataView(ab);
+  const wr = (off, s) => { for (let i=0;i<s.length;i++) dv.setUint8(off+i, s.charCodeAt(i)); };
+  wr(0, 'RIFF'); dv.setUint32(4, 36 + data.byteLength, true);
+  wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sr, true); dv.setUint32(28, sr*2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  wr(36, 'data'); dv.setUint32(40, data.byteLength, true);
+  new Int16Array(ab, 44).set(data);
+  let bin = ''; const u8 = new Uint8Array(ab);
+  for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+const BEEP_URL = buildBeepDataUrl();
+
+document.getElementById('t9').addEventListener('click', () => {
+  const a = new Audio(BEEP_URL);
+  a.play().then(() => {
+    log('Test 9 (HTML5 audio) play() resolved');
+    recordResult('t9', 'HTML5 <audio> data URL beep');
+  }).catch(e => {
+    log('Test 9 play err: ' + e.message);
+    recordResult('t9', 'HTML5 <audio> ERR: ' + e.message);
+  });
+});
+
+document.getElementById('t10').addEventListener('click', () => {
+  const a = new Audio(BEEP_URL);
+  a.play().then(() => {
+    // After HTML5 audio claims the session, start a Web Audio osc
+    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+    setTimeout(() => {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain(); g.gain.value = 0.1;
+      osc.frequency.value = 660;
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(); osc.stop(ctx.currentTime + 1);
+      log(addState('Test 10: HTML5 beep then 660Hz osc'));
+    }, 200);
+    recordResult('t10', 'HTML5 beep, then Web Audio osc 660Hz');
+  }).catch(e => {
+    log('Test 10 err: ' + e.message);
+    recordResult('t10', 'Test 10 ERR: ' + e.message);
+  });
 });
 </script>
 </body>
