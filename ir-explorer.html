@@ -412,8 +412,11 @@
     .build-no-mobile  { display: none; margin-left: 0.5rem; }
     .build-no-desktop { display: block; margin-top: auto; }
 
-    /* ── Mobile ──────────────────────────────────────────────────────────────── */
-    @media (max-width: 768px) {
+    /* ── Mobile / cramped-desktop ─────────────────────────────────────────────
+       Triggers below 1656px since the desktop layout needs:
+       sidebar(320) + main-content(2×500 cards + 24gap + 32padding = 1056) + notes(280) = 1656px
+       to render two cards side-by-side without shrinking. */
+    @media (max-width: 1655px) {
       body { flex-direction: column; align-items: stretch; }
 
       /* Sidebar becomes sticky top bar */
@@ -662,7 +665,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 6;
+    const BUILD_NO = 7;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
