@@ -1691,7 +1691,7 @@
 
     // ── Audio context ─────────────────────────────────────────────────────────
     function getAudioCtx() {
-      if (!audioCtx) audioCtx = new AudioContext();
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       return audioCtx;
     }
 
@@ -1755,8 +1755,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     // ── Left audio graph ──────────────────────────────────────────────────────
-    function startPlay() {
+    async function startPlay() {
       const ctx   = getAudioCtx();
+      try { await ctx.resume(); } catch(e) { setStatus('Audio resume failed: ' + e.message); return; }
       const hasIR = irSlots.length > 0;
 
       sourceNode        = ctx.createBufferSource();
@@ -1840,8 +1841,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
       updateRightRecordBtn();
     }
 
-    function restartPlay() { stopPlay(); startPlay(); }
-    function togglePlay()  { isPlaying ? stopPlay() : startPlay(); }
+    async function restartPlay() { stopPlay(); await startPlay(); }
+    async function togglePlay()  { isPlaying ? stopPlay() : await startPlay(); }
 
     function animatePlayhead() {
       const ctx     = getAudioCtx();
@@ -2201,9 +2202,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
-      const ctx = getAudioCtx();
-      ctx.resume().catch(() => {}); // fire-and-forget: don't await, keep gesture synchronous
-      togglePlay();
+      togglePlay().catch(e => setStatus('Play error: ' + e.message));
     });
 
     btnReset.addEventListener('click', () => {
