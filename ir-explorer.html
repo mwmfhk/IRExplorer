@@ -443,10 +443,12 @@
       }
       .notes-toggle { display: block; }
       .notes-body {
-        display: none; max-height: 40vh; overflow-y: auto;
-        padding-top: 0.5rem;
+        display: flex; flex-direction: column;
+        max-height: 0; padding-top: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, padding-top 0.3s ease;
       }
-      .notes-body.open { display: flex; }
+      .notes-body.open { max-height: 75vh; padding-top: 0.5rem; }
       .notes-textarea { min-height: 120px; }
 
       /* Blend canvas can be smaller on mobile */
