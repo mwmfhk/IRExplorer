@@ -1756,8 +1756,11 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Left audio graph ──────────────────────────────────────────────────────
     async function startPlay() {
-      const ctx   = getAudioCtx();
-      try { await ctx.resume(); } catch(e) { setStatus('Audio resume failed: ' + e.message); return; }
+      const ctx = getAudioCtx();
+      if (!audioBuffer) { setStatus('No audio loaded'); return; }
+      const s0 = ctx.state;
+      try { await ctx.resume(); } catch(e) { setStatus('resume err: ' + e.message); return; }
+      if (ctx.state !== 'running') { setStatus('ctx not running (' + s0 + '→' + ctx.state + ')'); return; }
       const hasIR = irSlots.length > 0;
 
       sourceNode        = ctx.createBufferSource();
@@ -1812,7 +1815,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
       // Schedule slightly in the future so playStart is an exact AudioContext timestamp,
       // not an approximation that's one render quantum early.
-      const startAt = ctx.currentTime + (ctx.baseLatency || 0.005);
+      const startAt = ctx.currentTime + 0.1;
       sourceNode.start(startAt, sourceNode.loopStart);
       playStart = startAt;
       isPlaying = true;
@@ -2202,6 +2205,16 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
+      // iOS can auto-suspend the AudioContext between the initial unlock and any later tap.
+      // Re-apply the unlock trick synchronously on every Play press.
+      if (audioCtx) {
+        audioCtx.resume().catch(() => {});
+        try {
+          const b = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+          const s = audioCtx.createBufferSource();
+          s.buffer = b; s.connect(audioCtx.destination); s.start(0);
+        } catch(_) {}
+      }
       togglePlay().catch(e => setStatus('Play error: ' + e.message));
     });
 
