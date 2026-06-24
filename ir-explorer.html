@@ -193,13 +193,13 @@
     button:disabled { opacity: 0.35; cursor: not-allowed; }
     button:disabled:active { transform: none; }
 
-    .btn-record { background: #f59e0b; color: #111; font-weight: 700; min-width: 7.5rem; }
+    .btn-record { background: #f59e0b; color: #111; font-weight: 700; min-width: 5.5rem; }
     .btn-record:not(:disabled):hover { background: #fbbf24; }
     .btn-record.recording { background: #ef4444; color: #fff; }
     .btn-record.recording:hover { background: #f87171; }
-    #btnCal { min-width: 11rem; }
+    #btnCal { min-width: 9.5rem; }
 
-    .btn-play { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; display: none; min-width: 6.5rem; justify-content: center; }
+    .btn-play { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; display: none; min-width: 5.5rem; justify-content: center; }
     .btn-play:hover { background: #e8e8e8; }
     .btn-play.visible { display: flex; align-items: center; gap: 0.5rem; }
 
@@ -359,7 +359,7 @@
     .btn-export-ir:hover { background: #dcfce7; }
     .btn-export-ir:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; min-width: 6rem; }
+    .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; min-width: 5.8rem; }
     .btn-bypass:hover { background: #e8e8e8; }
     .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 
@@ -666,7 +666,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 3;
+    const BUILD_NO = 4;
     document.getElementById('buildNoMobile').textContent  = 'b' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
