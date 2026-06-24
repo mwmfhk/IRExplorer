@@ -1695,6 +1695,20 @@
       return audioCtx;
     }
 
+    // iOS Safari: unlock AudioContext on first touch anywhere on the page.
+    // Must happen before any playback attempt.
+    function iosUnlock() {
+      const ctx = getAudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+        // Play a zero-length silent buffer — required on some iOS versions
+        const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+        const src = ctx.createBufferSource();
+        src.buffer = buf; src.connect(ctx.destination); src.start(0);
+      }
+    }
+    window.addEventListener('touchstart', iosUnlock, { once: true, passive: true });
+
     // ── AudioWorklet recorder ─────────────────────────────────────────────────
     const RECORDER_WORKLET_CODE = `
 class RecorderProcessor extends AudioWorkletProcessor {
@@ -2189,8 +2203,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     // ── Buttons ───────────────────────────────────────────────────────────────
-    btnPlay.addEventListener('click', async () => {
-      await getAudioCtx().resume();
+    btnPlay.addEventListener('click', () => {
+      const ctx = getAudioCtx();
+      ctx.resume().catch(() => {}); // fire-and-forget: don't await, keep gesture synchronous
       togglePlay();
     });
 
