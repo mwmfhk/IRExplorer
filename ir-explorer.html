@@ -2207,6 +2207,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', async () => {
+      setStatus('tap: ctx=' + (audioCtx ? audioCtx.state : 'none') + ' buf=' + (audioBuffer ? 'ok' : 'null') + ' playing=' + isPlaying);
       const ctx = getAudioCtx();
       // iOS Safari: ctx.resume() must be called synchronously within the user gesture.
       // Playing a silent buffer forces the audio session open before any await.
@@ -2214,8 +2215,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
         const b = ctx.createBuffer(1, 1, ctx.sampleRate);
         const s = ctx.createBufferSource();
         s.buffer = b; s.connect(ctx.destination); s.start(0);
-      } catch(_) {}
-      try { await ctx.resume(); } catch(_) {}
+      } catch(e) { setStatus('unlock err: ' + e.message); }
+      try { await ctx.resume(); } catch(e) { setStatus('resume err: ' + e.message); }
+      setStatus('after resume: ctx=' + ctx.state + ' isPlaying=' + isPlaying);
       if (isPlaying) { stopPlay(); return; }
       startPlay().catch(e => setStatus('Play error: ' + e.message));
     });
