@@ -232,7 +232,7 @@
 
     .icon-play::before  { content: '▶'; font-size: 0.7rem; }
     .icon-pause::before { content: '⏸'; font-size: 0.7rem; }
-    .duration { font-size: 0.72rem; color: #777; }
+    .duration:not(:empty)::before { content: ' | '; opacity: 0.5; }
 
     .transport-desc {
       font-size: 0.68rem;
@@ -517,7 +517,7 @@
 
     <!-- ── Left panel (Rhythm) ────────────────────────────────────────────── -->
     <div class="card">
-      <div class="panel-label">Rhythm</div>
+      <div class="panel-label">Rhythm<span class="duration" id="duration"></span></div>
 
       <div class="waveform-container" id="waveformContainer">
         <canvas class="waveform-canvas" id="waveform"></canvas>
@@ -532,7 +532,6 @@
         <button class="btn-record" id="btnRecord">Record</button>
         <button class="btn-play"   id="btnPlay"><span class="icon-play" id="playIcon"></span> Play</button>
         <button class="btn-reset"  id="btnReset">Reset</button>
-        <span class="duration" id="duration"></span>
         <div class="input-knob-wrap">
           <span class="input-knob-label">Gain</span>
           <canvas class="input-knob" id="inputGainKnob" width="64" height="64"></canvas>
@@ -583,7 +582,7 @@
 
     <!-- ── Right panel (Lead) ─────────────────────────────────────────────── -->
     <div class="card">
-      <div class="panel-label">Lead</div>
+      <div class="panel-label">Lead<span class="duration" id="durationR"></span></div>
 
       <div class="waveform-container" id="waveformContainerR">
         <canvas class="waveform-canvas" id="waveformR"></canvas>
@@ -593,7 +592,6 @@
       <div class="controls">
         <button class="btn-record" id="btnRecordR" disabled>Record</button>
         <button class="btn-reset"  id="btnResetR">Reset</button>
-        <span class="duration" id="durationR"></span>
         <div class="input-knob-wrap">
           <span class="input-knob-label">Gain</span>
           <canvas class="input-knob" id="inputGainKnobR" width="64" height="64"></canvas>
@@ -668,7 +666,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 2;
+    const BUILD_NO = 3;
     document.getElementById('buildNoMobile').textContent  = 'b' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
