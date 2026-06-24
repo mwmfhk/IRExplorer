@@ -1812,25 +1812,14 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loopStart = loopStart * audioBuffer.duration;
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
 
-      // Diagnostic: play a 440 Hz beep for 1 second via oscillator.
-      // If you hear it, the AudioContext IS outputting to the speaker.
-      // If silent, ctx is running but not connected to audio hardware.
-      { const osc = ctx.createOscillator(); osc.frequency.value = 440;
-        const og = ctx.createGain(); og.gain.value = 0.4;
-        osc.connect(og); og.connect(ctx.destination);
-        osc.start(ctx.currentTime + 0.1); osc.stop(ctx.currentTime + 1.1); }
-
-      // Probe: sampleGainNode direct at -10 dB (audible even for quiet recordings)
-      const probeGain = ctx.createGain(); probeGain.gain.value = 0.3;
-      sampleGainNode.connect(probeGain); probeGain.connect(ctx.destination);
-
+      // iOS: ctx.currentTime can be stuck at 0 even when state='running', so any
+      // scheduled time > 0 never arrives. Use start(0) for immediate playback.
       { const W = hasIR ? slotWeights(irSlots, blendPt) : [];
         const wSum = W.reduce((a,b)=>a+b,0);
-        setStatus(`sr=${ctx.sampleRate} igain=${inputGainDb.toFixed(0)}dB dry=${dryGain.gain.value.toFixed(2)} nIR=${irSlots.length} wSum=${wSum.toFixed(2)} rvbDry=${reverbDry.gain.value.toFixed(2)} loop=${sourceNode.loopStart.toFixed(2)}-${sourceNode.loopEnd.toFixed(2)}`); }
+        setStatus(`sr=${ctx.sampleRate} t=${ctx.currentTime.toFixed(3)} igain=${inputGainDb.toFixed(0)}dB nIR=${irSlots.length} wSum=${wSum.toFixed(2)}`); }
 
-      const startAt = ctx.currentTime + 0.1;
-      sourceNode.start(startAt, sourceNode.loopStart);
-      playStart = startAt;
+      sourceNode.start(0, sourceNode.loopStart);
+      playStart = ctx.currentTime;
       isPlaying = true;
       playIcon.className = 'icon-pause';
       btnPlay.childNodes[1].textContent = ' Pause';
