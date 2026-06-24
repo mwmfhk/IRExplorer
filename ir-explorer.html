@@ -2208,13 +2208,11 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     // ── Buttons ───────────────────────────────────────────────────────────────
-    btnPlay.addEventListener('click', async () => {
+    btnPlay.addEventListener('click', () => {
       const ctx = getAudioCtx();
-      try { await ctx.resume(); } catch(_) {}
-      setStatus('tap ctx=' + ctx.state + ' t=' + ctx.currentTime.toFixed(3));
-      if (isPlaying) { stopPlay(); return; }
-      // Sine-wave test: 440 Hz generated purely in JS, no session data.
-      // If you hear this beep the AudioContext IS reaching the speaker.
+      // iOS: audio sources MUST be started synchronously in the gesture handler.
+      // Any await before start() prevents hardware routing to the speaker.
+      const resumeP = ctx.resume();
       try {
         const n = Math.floor(ctx.sampleRate * 1.5);
         const tb = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -2222,8 +2220,10 @@ registerProcessor('recorder-processor', RecorderProcessor);
         for (let i = 0; i < n; i++) td[i] = Math.sin(2 * Math.PI * 440 * i / ctx.sampleRate) * 0.5;
         const ts = ctx.createBufferSource(); ts.buffer = tb;
         ts.connect(ctx.destination); ts.start(0);
-      } catch(e) { setStatus('beep err: ' + e.message); }
-      startPlay().catch(e => setStatus('Play error: ' + e.message));
+      } catch(_) {}
+      setStatus('tap t=' + ctx.currentTime.toFixed(3));
+      if (isPlaying) { stopPlay(); return; }
+      resumeP.then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
     });
 
     btnReset.addEventListener('click', () => {
