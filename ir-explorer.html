@@ -2189,7 +2189,10 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     // ── Buttons ───────────────────────────────────────────────────────────────
-    btnPlay.addEventListener('click', togglePlay);
+    btnPlay.addEventListener('click', async () => {
+      await getAudioCtx().resume();
+      togglePlay();
+    });
 
     btnReset.addEventListener('click', () => {
       stopPlay();
