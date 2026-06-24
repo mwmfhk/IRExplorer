@@ -1812,7 +1812,12 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loopStart = loopStart * audioBuffer.duration;
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
 
-      // Diagnostic: show key signal-chain values so iOS silence can be diagnosed
+      // Diagnostic probe: wire sampleGainNode directly to destination at -30 dB.
+      // If you hear a very faint signal, the ConvolverNodes are the problem.
+      // If you hear nothing at all, the source itself isn't producing audio.
+      const probeGain = ctx.createGain(); probeGain.gain.value = 0.03;
+      sampleGainNode.connect(probeGain); probeGain.connect(ctx.destination);
+
       { const W = hasIR ? slotWeights(irSlots, blendPt) : [];
         const wSum = W.reduce((a,b)=>a+b,0);
         setStatus(`sr=${ctx.sampleRate} igain=${inputGainDb.toFixed(0)}dB dry=${dryGain.gain.value.toFixed(2)} nIR=${irSlots.length} wSum=${wSum.toFixed(2)} rvbDry=${reverbDry.gain.value.toFixed(2)} loop=${sourceNode.loopStart.toFixed(2)}-${sourceNode.loopEnd.toFixed(2)}`); }
@@ -1828,9 +1833,11 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       // Also start right panel if recorded
       if (rightAudioBuffer) {
-        const T_L = (loopEnd - loopStart) * audioBuffer.duration;
-        const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
-        startRightPlay(playStart + effectivePhase, 0);
+        try {
+          const T_L = (loopEnd - loopStart) * audioBuffer.duration;
+          const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+          startRightPlay(playStart + effectivePhase, 0);
+        } catch(e) { setStatus('rightPlay err: ' + e.message); }
       }
       updateRightRecordBtn();
     }
