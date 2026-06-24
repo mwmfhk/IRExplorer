@@ -1811,8 +1811,12 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loop      = true;
       sourceNode.loopStart = loopStart * audioBuffer.duration;
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
-      // Schedule slightly in the future so playStart is an exact AudioContext timestamp,
-      // not an approximation that's one render quantum early.
+
+      // Diagnostic: show key signal-chain values so iOS silence can be diagnosed
+      { const W = hasIR ? slotWeights(irSlots, blendPt) : [];
+        const wSum = W.reduce((a,b)=>a+b,0);
+        setStatus(`sr=${ctx.sampleRate} igain=${inputGainDb.toFixed(0)}dB dry=${dryGain.gain.value.toFixed(2)} nIR=${irSlots.length} wSum=${wSum.toFixed(2)} rvbDry=${reverbDry.gain.value.toFixed(2)} loop=${sourceNode.loopStart.toFixed(2)}-${sourceNode.loopEnd.toFixed(2)}`); }
+
       const startAt = ctx.currentTime + 0.1;
       sourceNode.start(startAt, sourceNode.loopStart);
       playStart = startAt;
