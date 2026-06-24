@@ -1,0 +1,3012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IR Explorer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #f4f4f4;
+      color: #111;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+    }
+
+    .sidebar {
+      width: 28%;
+      min-width: 220px;
+      max-width: 320px;
+      min-height: 100vh;
+      background: #fff;
+      border-right: 1px solid #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem 1.5rem;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .sidebar-title {
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #111;
+    }
+
+    .sidebar-copyright {
+      font-size: 0.65rem;
+      color: #aaa;
+      letter-spacing: 0.06em;
+    }
+
+    .sidebar-desc {
+      font-size: 0.72rem;
+      color: #555;
+      line-height: 1.65;
+      letter-spacing: 0.02em;
+      margin-top: 0.5rem;
+      flex: 0 0 auto;
+    }
+    .sidebar-desc:first-of-type {
+      margin-bottom: 0.5rem;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .btn-sidebar {
+      background: #f0f0f0;
+      color: #111;
+      border: 1px solid #e0e0e0;
+      padding: 0.55rem 1rem;
+      text-align: left;
+    }
+    .btn-sidebar:hover { background: #e8e8e8; }
+    .btn-sidebar.danger { background: #fff1f1; color: #b91c1c; border-color: #fecaca; }
+    .btn-sidebar.danger:hover { background: #fee2e2; }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 2rem 1rem;
+      overflow-y: auto;
+    }
+
+    .notes-panel {
+      width: 22%;
+      min-width: 180px;
+      max-width: 280px;
+      min-height: 100vh;
+      background: #fff;
+      border-left: 1px solid #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem 1.5rem;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    .notes-title {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #aaa;
+    }
+
+    .notes-textarea {
+      flex: 1;
+      resize: none;
+      border: none;
+      outline: none;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.72rem;
+      color: #111;
+      line-height: 1.65;
+      background: transparent;
+      letter-spacing: 0.02em;
+    }
+    .notes-textarea::placeholder { color: #ccc; }
+
+    .panels {
+      display: flex;
+      flex-direction: row;
+      gap: 1.5rem;
+      align-items: flex-start;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 500px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+
+    .panel-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #aaa;
+    }
+
+    .waveform-container {
+      position: relative;
+      height: 100px;
+      background: #f8f8f8;
+      border-radius: 8px;
+      border: 1px solid #e5e5e5;
+      overflow: hidden;
+      display: none;
+    }
+
+    .waveform-container.visible { display: block; }
+
+    canvas { display: block; }
+    .waveform-canvas { width: 100%; height: 100%; }
+
+    .playhead {
+      position: absolute;
+      top: 0; left: 0;
+      width: 2px; height: 100%;
+      background: #f59e0b;
+      opacity: 0;
+      transition: opacity 0.1s;
+      pointer-events: none;
+    }
+
+    .playhead.active { opacity: 1; }
+    .playhead.right-ph { background: #6366f1; }
+
+    .controls { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+
+    button {
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.78rem;
+      letter-spacing: 0.05em;
+      padding: 0.6rem 1.1rem;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button:disabled:active { transform: none; }
+
+    .btn-record { background: #f59e0b; color: #111; font-weight: 700; }
+    .btn-record:not(:disabled):hover { background: #fbbf24; }
+    .btn-record.recording { background: #ef4444; color: #fff; }
+    .btn-record.recording:hover { background: #f87171; }
+
+    .btn-play { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; display: none; }
+    .btn-play:hover { background: #e8e8e8; }
+    .btn-play.visible { display: flex; align-items: center; gap: 0.5rem; }
+
+    .btn-reset { background: transparent; color: #aaa; border: 1px solid #e5e5e5; display: none; }
+    .btn-reset:hover { color: #666; border-color: #ccc; }
+    .btn-reset.visible { display: block; }
+
+    .status {
+      font-size: 0.72rem; color: #555;
+      letter-spacing: 0.04em;
+      min-height: 1rem;
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #ef4444;
+      display: none;
+      animation: pulse 1s infinite;
+      flex-shrink: 0;
+    }
+
+    .dot.visible { display: block; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+
+    .icon-play::before  { content: '▶'; font-size: 0.7rem; }
+    .icon-pause::before { content: '⏸'; font-size: 0.7rem; }
+    .duration { font-size: 0.72rem; color: #777; }
+
+    .transport-desc {
+      font-size: 0.68rem;
+      color: #666;
+      line-height: 1.5;
+      letter-spacing: 0.02em;
+    }
+    .transport-desc strong { color: #666; font-weight: 600; }
+
+    .transport-bar { width: auto; min-width: 380px; }
+    .transport-bar .cal-strip { width: 100%; }
+
+    .sync-trim {
+      display: flex; align-items: center; gap: 0.3rem;
+      font-size: 0.7rem; color: #bbb; letter-spacing: 0.04em;
+    }
+    .transport-bar .cal-strip { width: 100%; }
+    .trim-readout { font-size: 0.7rem; color: #818cf8; letter-spacing: 0.04em; min-width: 3ch; }
+    .btn-cal-reset {
+      background: transparent; color: #aaa;
+      border: 1px solid #e5e5e5;
+      padding: 0.25rem 0.55rem;
+      font-size: 0.72rem; line-height: 1;
+      border-radius: 6px;
+      display: none;
+    }
+    .btn-cal-reset:hover { color: #555; border-color: #ccc; }
+    .btn-cal-reset.visible { display: block; }
+
+    .cal-result-canvas { cursor: default; }
+
+    .cal-strip {
+      display: none;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+    .cal-strip.visible { display: flex; }
+    .cal-canvas {
+      width: 100%; height: 44px;
+      display: block;
+      border-radius: 6px;
+      border: 1px solid #e5e5e5;
+    }
+    .cal-hint {
+      font-size: 0.68rem; color: #666;
+      letter-spacing: 0.03em;
+      text-align: center;
+    }
+    .cal-result-canvas {
+      width: 100%; height: 110px;
+      display: none;
+      border-radius: 6px;
+      border: 1px solid #e5e5e5;
+    }
+    .cal-result-canvas.visible { display: block; }
+
+
+    .region-dim {
+      position: absolute; top: 0; height: 100%;
+      background: rgba(255,255,255,0.65);
+      pointer-events: none; z-index: 2;
+    }
+
+    .region-dim.left  { left: 0; }
+    .region-dim.right { right: 0; }
+
+    .region-handle {
+      position: absolute; top: 0;
+      width: 18px; height: 100%;
+      cursor: col-resize;
+      transform: translateX(-50%);
+      z-index: 4; display: none;
+    }
+
+    .region-handle.visible { display: block; }
+
+    .region-handle::after {
+      content: '';
+      position: absolute; left: 50%; top: 0;
+      width: 2px; height: 100%;
+      background: #f59e0b;
+      transform: translateX(-50%);
+    }
+
+    .region-handle::before {
+      content: '';
+      position: absolute; left: 50%; top: 50%;
+      width: 8px; height: 24px;
+      background: #f59e0b; border-radius: 3px;
+      transform: translate(-50%, -50%); z-index: 5;
+    }
+
+    .blend-section { display: flex; flex-direction: column; gap: 0.75rem; }
+
+    .blend-canvas { width: 100%; height: 260px; display: block; cursor: default; }
+
+    .blend-controls {
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+
+    .blend-hint { font-size: 0.68rem; color: #777; letter-spacing: 0.02em; margin-left: auto; }
+
+    .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+    .knob-label { font-size: 0.62rem; color: #777; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .ir-knob { width: 42px; height: 42px; cursor: ns-resize; }
+    .gain-label { font-size: 0.62rem; color: #555; letter-spacing: 0.04em; }
+
+    .knobs-row { display: flex; gap: 0.75rem; justify-content: center; }
+
+    .post-divider { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; }
+    .post-hr { border: none; border-top: 1px solid #e0e0e0; margin: 0; }
+    .post-label { font-size: 0.6rem; color: #999; letter-spacing: 0.03em; text-align: center; }
+    .eq-knob { width: 42px; height: 42px; cursor: ns-resize; touch-action: none; display: block; }
+
+    .btn-add-ir { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; }
+    .btn-add-ir:hover { background: #e8e8e8; }
+
+    .btn-export-ir {
+      background: #f0fdf4; color: #166534;
+      border: 1px solid #bbf7d0; white-space: nowrap;
+    }
+    .btn-export-ir:hover { background: #dcfce7; }
+    .btn-export-ir:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; }
+    .btn-bypass:hover { background: #e8e8e8; }
+    .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
+    .slot-remove-btn {
+      position: fixed; z-index: 999;
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      background: #ef4444; color: #fff;
+      font-size: 15px; line-height: 1;
+      padding: 0; border: 2px solid #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.22);
+      display: none; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .slot-remove-btn:hover { background: #dc2626; }
+
+    .slot-norm-popup {
+      position: fixed; z-index: 997;
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 0.35rem 0.5rem;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .slot-norm-popup.active { display: flex; }
+    .norm-title { font-size: 0.52rem; color: #aaa; letter-spacing: 0.1em; text-transform: uppercase; }
+    .norm-knob-canvas { display: block; cursor: ns-resize; }
+    .norm-db-label { font-size: 0.6rem; color: #555; letter-spacing: 0.04em; white-space: nowrap; }
+
+    .input-knob-wrap {
+      display: flex; align-items: center; gap: 0.35rem;
+      margin-left: auto;
+    }
+    .input-knob-label { font-size: 0.62rem; color: #777; letter-spacing: 0.06em; text-transform: uppercase; }
+    .input-knob { width: 32px; height: 32px; cursor: ns-resize; }
+
+
+  </style>
+</head>
+<body>
+
+  <div class="sidebar">
+    <div class="sidebar-title">IR Explorer</div>
+    <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
+    <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
+    <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
+    <button class="btn-sidebar" id="btnDemo" style="margin-top:0.75rem">&#9654; Demo session</button>
+    <div style="flex:1"></div>
+    <div class="sidebar-actions">
+      <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
+      <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
+      <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+
+  <div class="card transport-bar">
+    <div class="panel-label">Latency Calibration</div>
+    <div class="sync-trim">
+      <button class="btn-record" id="btnCal">Calibrate</button>
+      <span class="trim-readout" id="syncTrimLabel"></span>
+      <button class="btn-cal-reset" id="btnCalReset">Reset</button>
+    </div>
+    <div class="cal-strip" id="calStrip">
+      <canvas class="cal-canvas" id="calCanvas"></canvas>
+      <div class="cal-hint" id="calHint">4 count-in beats, then play a note on each click</div>
+    </div>
+    <canvas class="cal-result-canvas" id="calResultCanvas"></canvas>
+    <p class="transport-desc">Measures round-trip audio latency so the lead recording lines up with the rhythm loop — necessary when playback and recording use separate interfaces (e.g. laptop speakers + audio interface). Drag the blue line to fine-tune.</p>
+  </div>
+
+  <div class="panels">
+
+    <!-- ── Left panel (Rhythm) ────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="panel-label">Rhythm</div>
+
+      <div class="waveform-container" id="waveformContainer">
+        <canvas class="waveform-canvas" id="waveform"></canvas>
+        <div class="region-dim left"  id="dimLeft"></div>
+        <div class="region-dim right" id="dimRight"></div>
+        <div class="region-handle"   id="handleLeft"></div>
+        <div class="region-handle"   id="handleRight"></div>
+        <div class="playhead"        id="playhead"></div>
+      </div>
+
+      <div class="controls">
+        <button class="btn-record" id="btnRecord">Record</button>
+        <button class="btn-play"   id="btnPlay"><span class="icon-play" id="playIcon"></span> Play</button>
+        <button class="btn-reset"  id="btnReset">Reset</button>
+        <span class="duration" id="duration"></span>
+        <div class="input-knob-wrap">
+          <span class="input-knob-label">Gain</span>
+          <canvas class="input-knob" id="inputGainKnob" width="64" height="64"></canvas>
+          <span class="gain-label" id="inputGainLabel">+0.0 dB</span>
+        </div>
+      </div>
+
+      <div class="blend-section">
+        <canvas class="blend-canvas" id="blendCanvas"></canvas>
+        <div class="blend-controls">
+          <button class="btn-add-ir" id="btnAddIr">Add IR</button>
+          <button class="btn-bypass" id="btnBypass">Bypass</button>
+          <button class="btn-export-ir" id="btnExportIr" disabled>Export Blended IR</button>
+        </div>
+        <div class="post-divider">
+          <hr class="post-hr">
+          <span class="post-label">Post processing for assessment · not part of the IR</span>
+        </div>
+        <div class="knobs-row">
+          <div class="knob-wrap">
+            <span class="knob-label">Low</span>
+            <canvas class="eq-knob" id="eqLowKnob" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqLowLabel">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">Mid</span>
+            <canvas class="eq-knob" id="eqMidKnob" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqMidLabel">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">High</span>
+            <canvas class="eq-knob" id="eqHighKnob" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqHighLabel">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">Reverb</span>
+            <canvas class="ir-knob" id="reverbKnob" width="84" height="84"></canvas>
+            <span class="gain-label" id="reverbLabel">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="status">
+        <div class="dot" id="dot"></div>
+        <span id="statusText">Press record to capture a DI sample.</span>
+      </div>
+    </div>
+
+    <!-- ── Right panel (Lead) ─────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="panel-label">Lead</div>
+
+      <div class="waveform-container" id="waveformContainerR">
+        <canvas class="waveform-canvas" id="waveformR"></canvas>
+        <div class="playhead right-ph" id="playheadR"></div>
+      </div>
+
+      <div class="controls">
+        <button class="btn-record" id="btnRecordR" disabled>Record</button>
+        <button class="btn-reset"  id="btnResetR">Reset</button>
+        <span class="duration" id="durationR"></span>
+        <div class="input-knob-wrap">
+          <span class="input-knob-label">Gain</span>
+          <canvas class="input-knob" id="inputGainKnobR" width="64" height="64"></canvas>
+          <span class="gain-label" id="inputGainLabelR">+0.0 dB</span>
+        </div>
+      </div>
+
+      <div class="blend-section">
+        <canvas class="blend-canvas" id="blendCanvasR"></canvas>
+        <div class="blend-controls">
+          <button class="btn-add-ir" id="btnAddIrR">Add IR</button>
+          <button class="btn-bypass" id="btnBypassR">Bypass</button>
+          <button class="btn-export-ir" id="btnExportIrR" disabled>Export Blended IR</button>
+        </div>
+        <div class="post-divider">
+          <hr class="post-hr">
+          <span class="post-label">Post processing for assessment · not part of the IR</span>
+        </div>
+        <div class="knobs-row">
+          <div class="knob-wrap">
+            <span class="knob-label">Low</span>
+            <canvas class="eq-knob" id="eqLowKnobR" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqLowLabelR">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">Mid</span>
+            <canvas class="eq-knob" id="eqMidKnobR" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqMidLabelR">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">High</span>
+            <canvas class="eq-knob" id="eqHighKnobR" width="84" height="84"></canvas>
+            <span class="gain-label" id="eqHighLabelR">0 dB</span>
+          </div>
+          <div class="knob-wrap">
+            <span class="knob-label">Reverb</span>
+            <canvas class="ir-knob" id="reverbKnobR" width="84" height="84"></canvas>
+            <span class="gain-label" id="reverbLabelR">0%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="status">
+        <div class="dot" id="dotR"></div>
+        <span id="statusTextR">Record rhythm first, then record lead here.</span>
+      </div>
+    </div>
+
+  </div><!-- .panels -->
+
+  </div><!-- .main-content -->
+
+  <div class="notes-panel">
+    <div class="notes-title">Notes</div>
+    <textarea class="notes-textarea" id="sessionNotes" placeholder="Session notes…"></textarea>
+  </div>
+
+  <button class="slot-remove-btn" id="slotRemoveBtn">−</button>
+
+  <div class="slot-norm-popup" id="slotNormPopup">
+    <span class="norm-title">Norm Gain</span>
+    <canvas class="norm-knob-canvas" id="normKnobCanvas" width="36" height="36"></canvas>
+    <span class="norm-db-label" id="normDbLabel">+0.0 dB</span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+  <script>
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    // Left
+    const btnRecord    = document.getElementById('btnRecord');
+    const btnPlay      = document.getElementById('btnPlay');
+    const btnReset     = document.getElementById('btnReset');
+    const wfContainer  = document.getElementById('waveformContainer');
+    const waveCanvas   = document.getElementById('waveform');
+    const playhead     = document.getElementById('playhead');
+    const dot          = document.getElementById('dot');
+    const statusText   = document.getElementById('statusText');
+    const playIcon     = document.getElementById('playIcon');
+    const durationEl   = document.getElementById('duration');
+    const handleLeft   = document.getElementById('handleLeft');
+    const handleRight  = document.getElementById('handleRight');
+    const dimLeft      = document.getElementById('dimLeft');
+    const dimRight     = document.getElementById('dimRight');
+    const blendCanvas  = document.getElementById('blendCanvas');
+    const reverbKnob   = document.getElementById('reverbKnob');
+    const reverbLabel  = document.getElementById('reverbLabel');
+    const inputGainKnob  = document.getElementById('inputGainKnob');
+    const inputGainLabel = document.getElementById('inputGainLabel');
+    const btnBypass    = document.getElementById('btnBypass');
+
+    const btnSave      = document.getElementById('btnSave');
+    const btnLoad      = document.getElementById('btnLoad');
+    const btnClear     = document.getElementById('btnClear');
+    const btnDemo      = document.getElementById('btnDemo');
+    const sessionNotesEl = document.getElementById('sessionNotes');
+    const btnAddIr      = document.getElementById('btnAddIr');
+    const btnAddIrR     = document.getElementById('btnAddIrR');
+    const btnExportIr   = document.getElementById('btnExportIr');
+    const btnExportIrR  = document.getElementById('btnExportIrR');
+    const slotRemoveBtn = document.getElementById('slotRemoveBtn');
+
+    // Right
+    const btnRecordR     = document.getElementById('btnRecordR');
+    const btnResetR      = document.getElementById('btnResetR');
+    const btnCal         = document.getElementById('btnCal');
+    const btnCalReset    = document.getElementById('btnCalReset');
+    const syncTrimLabel  = document.getElementById('syncTrimLabel');
+    const calStripEl      = document.getElementById('calStrip');
+    const calCanvas       = document.getElementById('calCanvas');
+    const calHint         = document.getElementById('calHint');
+    const calResultCanvas = document.getElementById('calResultCanvas');
+    const wfContainerR   = document.getElementById('waveformContainerR');
+    const waveCanvasR    = document.getElementById('waveformR');
+    const playheadR      = document.getElementById('playheadR');
+    const dotR           = document.getElementById('dotR');
+    const statusTextR    = document.getElementById('statusTextR');
+    const durationR      = document.getElementById('durationR');
+    const blendCanvasR   = document.getElementById('blendCanvasR');
+    const reverbKnobR    = document.getElementById('reverbKnobR');
+    const reverbLabelR   = document.getElementById('reverbLabelR');
+    const inputGainKnobR  = document.getElementById('inputGainKnobR');
+    const inputGainLabelR = document.getElementById('inputGainLabelR');
+    const eqLowKnob   = document.getElementById('eqLowKnob');
+    const eqMidKnob   = document.getElementById('eqMidKnob');
+    const eqHighKnob  = document.getElementById('eqHighKnob');
+    const eqLowLabel  = document.getElementById('eqLowLabel');
+    const eqMidLabel  = document.getElementById('eqMidLabel');
+    const eqHighLabel = document.getElementById('eqHighLabel');
+    const eqLowKnobR   = document.getElementById('eqLowKnobR');
+    const eqMidKnobR   = document.getElementById('eqMidKnobR');
+    const eqHighKnobR  = document.getElementById('eqHighKnobR');
+    const eqLowLabelR  = document.getElementById('eqLowLabelR');
+    const eqMidLabelR  = document.getElementById('eqMidLabelR');
+    const eqHighLabelR = document.getElementById('eqHighLabelR');
+    const btnBypassR     = document.getElementById('btnBypassR');
+    // Hidden file inputs (one per panel)
+    const irFileInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.wav,.aif,.aiff' });
+    irFileInput.style.display = 'none';
+    document.body.appendChild(irFileInput);
+
+    const irFileInputR = Object.assign(document.createElement('input'), { type: 'file', accept: '.wav,.aif,.aiff' });
+    irFileInputR.style.display = 'none';
+    document.body.appendChild(irFileInputR);
+
+    // ── Constants ─────────────────────────────────────────────────────────────
+    const MAX_SLOTS    = 8;
+    const CANVAS_SIZE  = 200;
+    const POLY_R       = 58;
+    const PHANTOM_R    = 88;
+    const VERT_R       = 18;
+    const PHANTOM_VERT = 14;
+    const BLEND_HIT    = 13;
+    const GAIN_MIN     = -12;
+    const GAIN_MAX     = 50;
+    const DB_PER_PX    = 0.18;
+    const INPUT_GAIN_MIN = -20;
+    const INPUT_GAIN_MAX = 20;
+    const RVB_PER_PX   = 0.004;
+    const EQ_MAX_DB    = 12;
+
+    function dbToLinear(db) { return Math.pow(10, db / 20); }
+
+    function makeReverbIR(ctx, decaySec = 2.0) {
+      const len = Math.ceil(ctx.sampleRate * decaySec);
+      const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++)
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+      }
+      return buf;
+    }
+
+    // ── Left state ────────────────────────────────────────────────────────────
+    let audioCtx    = null;
+    let mediaRec    = null;
+    let chunks      = [];
+    let audioBuffer = null;
+    let sourceNode  = null;
+    let isPlaying   = false;
+    let playStart   = 0;
+    let animFrame   = null;
+    let stream      = null;
+    let dryGain     = null, wetMaster = null;
+    let slotGains   = [], slotConvs = [];
+    let irBypassed  = false;
+    let reverbNode  = null, reverbWet = null, reverbDry = null;
+    let sampleGainNode = null;
+    let loopStart = 0, loopEnd = 1;
+    let waveDrag  = null;
+    let irSlots   = [], pendingSlot = null;
+    let blendPt   = { x: 0, y: 0 };
+    let hexDrag   = false;
+
+    // Left knob state
+    let sessionNotes = '';
+    let reverbMix = 0, rvbDrag = false, rvbStartY = 0, rvbStartMix = 0;
+    let inputGainDb = 0, inputKnobDrag = false, inputKnobStartY = 0, inputKnobStartDb = 0;
+    let eqLowDb = 0, eqMidDb = 0, eqHighDb = 0;
+    let eqLowNode = null, eqMidNode = null, eqHighNode = null, masterBus = null;
+    let eqLowDrag = false, eqLowStartY = 0, eqLowStartDb = 0;
+    let eqMidDrag = false, eqMidStartY = 0, eqMidStartDb = 0;
+    let eqHighDrag = false, eqHighStartY = 0, eqHighStartDb = 0;
+
+    // ── Right state ───────────────────────────────────────────────────────────
+    let rightSyncTrimSec = 0;   // manual sync offset in seconds (positive = start right earlier)
+    let rightIsRecording = false, rightStream = null;
+    let rightWorkletNode = null, rightProcessor = null, rightMicSrc = null, rightSilencer = null;
+    let rightPCMChunks = [];       // Float32Array chunks collected during recording
+    let rightRawBuffer   = null;   // original decoded (D_R duration)
+    let rightAudioBuffer = null;   // padded to N*T_L, used for playback
+    let rightActualDuration  = 0;  // D_R
+    let rightPaddedDuration  = 0;  // N * T_L
+    let rightRecordStartCtxTime = 0;
+    let leftPhaseOffset = 0;       // seconds into left loop when right rec started
+
+    let rightSourceNode    = null;
+    let rightSampleGainNode = null;
+    let rightDryGain = null, rightWetMaster = null;
+    let rightSlotGains = [], rightSlotConvs = [];
+    let rightIrBypassed = false;
+    let rightReverbNode = null, rightReverbWet = null, rightReverbDry = null;
+    let rightPlayScheduledAt = 0;  // ctx time rightSourceNode was scheduled to start
+    let rightStartOffset     = 0;  // buffer offset passed to start()
+    let rightAnimFrame = null;
+
+    let rightIrSlots = [], rightPendingSlot = null;
+    let rightBlendPt = { x: 0, y: 0 };
+    let rightHexDrag = false;
+
+    // Right knob state
+    let rightReverbMix = 0, rightRvbDrag = false, rightRvbStartY = 0, rightRvbStartMix = 0;
+    let rightInputGainDb = 0, rightInputKnobDrag = false, rightInputKnobStartY = 0, rightInputKnobStartDb = 0;
+    let rightEqLowDb = 0, rightEqMidDb = 0, rightEqHighDb = 0;
+    let rightEqLowNode = null, rightEqMidNode = null, rightEqHighNode = null, rightMasterBus = null;
+    let rightEqLowDrag = false, rightEqLowStartY = 0, rightEqLowStartDb = 0;
+    let rightEqMidDrag = false, rightEqMidStartY = 0, rightEqMidStartDb = 0;
+    let rightEqHighDrag = false, rightEqHighStartY = 0, rightEqHighStartDb = 0;
+
+    // ── Calibration state ─────────────────────────────────────────────────────
+    let calibratedLatency = 0;
+    let calIsRunning = false;
+    let calFirstBeatAt = 0;
+    let calRecordStartCtxTime = 0;
+    let calPCMChunks = [];
+    let calMicSrc = null, calWorkletNode = null, calProcessor = null, calSilencer = null;
+    let calStream = null;
+    let calAnimFrame = null;
+    let calClickTimes = [];    // measurement beat ctx times (grows one per beat)
+    let calMeasLatencies = []; // raw latency per beat (grows one per valid hit)
+    let calNextBeatCtxTime = 0;
+    let calNextBeatTimeout = null;
+    let calResultData = null;
+    const CAL_BEAT_INTERVAL = 1.0;
+    const CAL_COUNT_IN = 4;
+    const CAL_MAX_BEATS = 30;
+    const CAL_SEM_TARGET = 0.005; // 5 ms
+    let calDragging = false, calDragStartX = 0, calDragStartTrim = 0;
+
+    const NORM_GAIN_MIN = -20;
+    const NORM_GAIN_MAX = 60;
+
+    // ── Slot remove hover state ───────────────────────────────────────────────
+    let hoveredSlotIdx = -1, hoveredSlotIsRight = false, hoveredSlotCanvas = null;
+    let slotRemoveHideTimer = null;
+
+    // ── Norm popup hover state ────────────────────────────────────────────────
+    let normHoveredSlotIdx = -1, normHoveredIsRight = false;
+    let normHideTimer = null;
+    let normKnobDrag = false, normKnobStartY = 0, normKnobStartDb = 0;
+
+    const slotNormPopup   = document.getElementById('slotNormPopup');
+    const normKnobCanvas  = document.getElementById('normKnobCanvas');
+    const normDbLabel     = document.getElementById('normDbLabel');
+
+    // ── IR normalization helpers ──────────────────────────────────────────────
+    function irPeakDb(buffer) {
+      let peak = 0;
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const d = buffer.getChannelData(ch);
+        for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+      }
+      return peak > 1e-9 ? 20 * Math.log10(peak) : -Infinity;
+    }
+    function computeNormGainDb(buffer) {
+      const peak = irPeakDb(buffer);
+      return isFinite(peak) ? Math.max(NORM_GAIN_MIN, Math.min(NORM_GAIN_MAX, -peak)) : 0;
+    }
+    function drawNormKnob(db) {
+      const dpr = window.devicePixelRatio || 1;
+      const S = 36;
+      normKnobCanvas.width  = Math.round(S * dpr);
+      normKnobCanvas.height = Math.round(S * dpr);
+      normKnobCanvas.style.width  = S + 'px';
+      normKnobCanvas.style.height = S + 'px';
+      const c = normKnobCanvas.getContext('2d');
+      c.scale(dpr, dpr);
+      const cx = S / 2, cy = S / 2, r = 12;
+      const startA = Math.PI * 0.75, sweep = Math.PI * 1.5;
+      const t    = Math.max(0, Math.min(1, (db - NORM_GAIN_MIN) / (NORM_GAIN_MAX - NORM_GAIN_MIN)));
+      const valA = startA + t * sweep;
+      c.clearRect(0, 0, S, S);
+      c.beginPath(); c.arc(cx, cy, r, startA, startA + sweep);
+      c.strokeStyle = '#e5e5e5'; c.lineWidth = 2.5; c.lineCap = 'round'; c.stroke();
+      c.beginPath(); c.arc(cx, cy, r, startA, valA);
+      c.strokeStyle = '#f59e0b'; c.lineWidth = 2.5; c.lineCap = 'round'; c.stroke();
+      c.beginPath();
+      c.moveTo(cx + Math.cos(valA) * (r - 3), cy + Math.sin(valA) * (r - 3));
+      c.lineTo(cx + Math.cos(valA) * (r + 1), cy + Math.sin(valA) * (r + 1));
+      c.strokeStyle = '#111'; c.lineWidth = 1.5; c.stroke();
+    }
+    function showNormPopup(canvas, slots, idx, isRight) {
+      clearTimeout(normHideTimer); normHideTimer = null;
+      normHoveredSlotIdx = idx; normHoveredIsRight = isRight;
+      const db = slots[idx]?.normGainDb ?? 0;
+      drawNormKnob(db);
+      normDbLabel.textContent = (db >= 0 ? '+' : '') + db.toFixed(1) + ' dB';
+      const r  = canvas.getBoundingClientRect();
+      const sc = canvasScale(canvas);
+      const v  = slotVertex(slots, idx);
+      const sx = r.left + r.width  / 2 + v.x * sc;
+      const sy = r.top  + r.height / 2 + v.y * sc;
+      const popW = 74, popH = 76;
+      let px = sx + VERT_R * sc + 6;
+      let py = sy - popH / 2;
+      if (px + popW > window.innerWidth  - 8) px = sx - VERT_R * sc - popW - 6;
+      if (py < 8)                               py = 8;
+      if (py + popH > window.innerHeight - 8)   py = window.innerHeight - popH - 8;
+      slotNormPopup.style.left    = px + 'px';
+      slotNormPopup.style.top     = py + 'px';
+      slotNormPopup.style.display = 'flex';
+    }
+    function hideNormPopupSoon() {
+      normHideTimer = setTimeout(() => {
+        slotNormPopup.style.display = 'none';
+        normHoveredSlotIdx = -1;
+      }, 120);
+    }
+
+    // ── Geometry helpers ──────────────────────────────────────────────────────
+    function slotVertex(slots, i) {
+      const n = slots.length;
+      const a = (-90 + i * 360 / n) * Math.PI / 180;
+      return { x: Math.cos(a) * POLY_R, y: Math.sin(a) * POLY_R };
+    }
+    function slotVertices(slots) { return slots.map((_, i) => slotVertex(slots, i)); }
+    function slotPhantom(slots) {
+      if (slots.length >= MAX_SLOTS) return null;
+      const n = slots.length + 1;
+      const a = (-90 + slots.length * 360 / n) * Math.PI / 180;
+      return { x: Math.cos(a) * PHANTOM_R, y: Math.sin(a) * PHANTOM_R };
+    }
+    function slotWeights(slots, bp) {
+      const n = slots.length;
+      if (n === 0) return [];
+      if (n === 1) return [1];
+      const verts = slotVertices(slots);
+      const eps   = 1e-6;
+      const invD  = verts.map(v => 1 / (Math.hypot(bp.x - v.x, bp.y - v.y) + eps));
+      const sum   = invD.reduce((a, b) => a + b, 0);
+      return invD.map(w => w / sum);
+    }
+    function constrainBlend(x, y) {
+      const r = Math.hypot(x, y), max = POLY_R * 0.88;
+      return r > max ? { x: x / r * max, y: y / r * max } : { x, y };
+    }
+    function canvasScale(canvas) {
+      const r = canvas.getBoundingClientRect();
+      return Math.min(r.width, r.height) / CANVAS_SIZE;
+    }
+    function canvasPos(canvas, e) {
+      const r  = canvas.getBoundingClientRect();
+      const sc = canvasScale(canvas);
+      return { x: (e.clientX - r.left - r.width / 2) / sc, y: (e.clientY - r.top - r.height / 2) / sc };
+    }
+
+    // ── Generic polygon drawing ───────────────────────────────────────────────
+    function _drawPolygon(canvasEl, slots, bp) {
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = canvasEl.getBoundingClientRect();
+      const W    = rect.width  || CANVAS_SIZE;
+      const H    = rect.height || CANVAS_SIZE;
+      canvasEl.width  = Math.round(W * dpr);
+      canvasEl.height = Math.round(H * dpr);
+
+      const ctx  = canvasEl.getContext('2d');
+      const sc   = Math.min(W, H) / CANVAS_SIZE;
+      const nL   = slots.length;
+      const verts   = nL > 0 ? slotVertices(slots) : [];
+      const weights = slotWeights(slots, bp);
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+
+      // Translate to center; all subsequent coords are in logical space (±POLY_R etc.)
+      ctx.save();
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(sc, sc);
+
+      const lw1 = 1 / sc;  // 1 CSS-pixel line in logical space
+
+      if (nL >= 3) {
+        ctx.beginPath();
+        verts.forEach((v, i) => i === 0 ? ctx.moveTo(v.x, v.y) : ctx.lineTo(v.x, v.y));
+        ctx.closePath();
+        ctx.fillStyle = '#fafafa'; ctx.fill();
+        ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = lw1; ctx.stroke();
+        verts.forEach(v => {
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(v.x, v.y);
+          ctx.strokeStyle = '#ebebeb'; ctx.lineWidth = lw1; ctx.stroke();
+        });
+      } else if (nL === 2) {
+        ctx.beginPath();
+        ctx.moveTo(verts[0].x, verts[0].y); ctx.lineTo(verts[1].x, verts[1].y);
+        ctx.strokeStyle = '#e8e8e8'; ctx.lineWidth = lw1; ctx.stroke();
+      }
+
+      if (nL >= 2) {
+        verts.forEach((v, i) => {
+          if (weights[i] < 0.005) return;
+          ctx.beginPath(); ctx.moveTo(bp.x, bp.y); ctx.lineTo(v.x, v.y);
+          ctx.strokeStyle = `rgba(245,158,11,${0.12 + weights[i] * 0.7})`;
+          ctx.lineWidth = (1 + weights[i] * 4) / sc; ctx.lineCap = 'round'; ctx.stroke();
+        });
+      }
+
+      verts.forEach((v, i) => {
+        const w = weights[i] || 0;
+        ctx.beginPath(); ctx.arc(v.x, v.y, VERT_R, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff7ed'; ctx.fill();
+        ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 2 / sc; ctx.stroke();
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        // Number — shift up slightly when % is also shown inside the circle
+        const showPct = nL >= 2 && w > 0.005;
+        ctx.fillStyle = '#92400e'; ctx.font = `bold ${12 / sc}px SF Mono, monospace`;
+        ctx.fillText(i + 1, v.x, showPct ? v.y - 4 : v.y);
+
+        // % inside the circle, below the number
+        if (showPct) {
+          ctx.fillStyle = '#d97706'; ctx.font = `${8 / sc}px SF Mono, monospace`;
+          ctx.fillText(Math.round(w * 100) + '%', v.x, v.y + 5);
+        }
+
+        // Name just outside the circle — smart alignment so text expands away from center
+        const outX = v.x / POLY_R, outY = v.y / POLY_R;
+        const hAlign = outX >  0.25 ? 'left'   : outX < -0.25 ? 'right'  : 'center';
+        const vAlign = outY >  0.25 ? 'top'    : outY < -0.25 ? 'bottom' : 'middle';
+        ctx.textAlign = hAlign; ctx.textBaseline = vAlign;
+        const shortName = slots[i].name.replace(/\.[^.]+$/, '').slice(0, 18);
+        ctx.fillStyle = '#555'; ctx.font = `${10 / sc}px SF Mono, monospace`;
+        ctx.fillText(shortName, v.x + outX * (VERT_R + 10), v.y + outY * (VERT_R + 10));
+      });
+
+      if (nL >= 2) {
+        ctx.beginPath(); ctx.arc(bp.x, bp.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#f59e0b'; ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 / sc; ctx.stroke();
+      }
+
+      ctx.restore(); // undo translate+scale
+      ctx.restore(); // undo dpr scale
+    }
+
+    function drawPolygon() {
+      _drawPolygon(blendCanvas, irSlots, blendPt);
+      btnExportIr.disabled = irSlots.length === 0;
+    }
+    function drawRightPolygon() {
+      _drawPolygon(blendCanvasR, rightIrSlots, rightBlendPt);
+      btnExportIrR.disabled = rightIrSlots.length === 0;
+    }
+
+    // ── Init blend canvases ───────────────────────────────────────────────────
+    requestAnimationFrame(() => { drawPolygon(); drawRightPolygon(); });
+
+    // ── Generic knob drawing ──────────────────────────────────────────────────
+    function _drawKnob(canvas, fr, color, rOff = 4, trackW = 3, dotR = 2.5, dotOff = 10) {
+      const dpr = window.devicePixelRatio || 1;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width/dpr, h = canvas.height/dpr;
+      const cx = w/2, cy = h/2, r = cx - 4;
+      const SA = (3/4)*Math.PI, SW = (3/2)*Math.PI;
+      const f  = Math.max(0, Math.min(1, fr));
+      ctx.save(); ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, h);
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = '#f0f0f0'; ctx.fill();
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, r - rOff, SA, SA+SW);
+      ctx.strokeStyle = '#ddd'; ctx.lineWidth = trackW; ctx.lineCap = 'round'; ctx.stroke();
+      if (f > 0) {
+        ctx.beginPath(); ctx.arc(cx, cy, r - rOff, SA, SA + f*SW);
+        ctx.strokeStyle = color; ctx.lineWidth = trackW; ctx.lineCap = 'round'; ctx.stroke();
+      }
+      const a = SA + f*SW;
+      ctx.beginPath();
+      ctx.arc(cx + (r-dotOff)*Math.cos(a), cy + (r-dotOff)*Math.sin(a), dotR, 0, Math.PI*2);
+      ctx.fillStyle = '#fff'; ctx.fill();
+      ctx.restore();
+    }
+
+    function drawReverbKnob(){ _drawKnob(reverbKnob, reverbMix, '#6366f1'); }
+    function drawInputGainKnob() {
+      _drawKnob(inputGainKnob, (inputGainDb - INPUT_GAIN_MIN)/(INPUT_GAIN_MAX - INPUT_GAIN_MIN), '#10b981', 3, 2.5, 2, 8);
+    }
+    function drawRightReverbKnob(){ _drawKnob(reverbKnobR, rightReverbMix, '#6366f1'); }
+    function drawRightInputGainKnob() {
+      _drawKnob(inputGainKnobR, (rightInputGainDb - INPUT_GAIN_MIN)/(INPUT_GAIN_MAX - INPUT_GAIN_MIN), '#10b981', 3, 2.5, 2, 8);
+    }
+    function _drawEqKnob(canvas, db) {
+      _drawKnob(canvas, (db + EQ_MAX_DB) / (2 * EQ_MAX_DB), '#f59e0b', 3, 2.5, 2, 8);
+    }
+    function eqDbText(db) { return (db === 0 ? '0' : (db > 0 ? '+' : '') + db.toFixed(1)) + ' dB'; }
+    function drawEqKnobs() {
+      _drawEqKnob(eqLowKnob, eqLowDb); eqLowLabel.textContent = eqDbText(eqLowDb);
+      _drawEqKnob(eqMidKnob, eqMidDb); eqMidLabel.textContent = eqDbText(eqMidDb);
+      _drawEqKnob(eqHighKnob, eqHighDb); eqHighLabel.textContent = eqDbText(eqHighDb);
+    }
+    function drawRightEqKnobs() {
+      _drawEqKnob(eqLowKnobR, rightEqLowDb); eqLowLabelR.textContent = eqDbText(rightEqLowDb);
+      _drawEqKnob(eqMidKnobR, rightEqMidDb); eqMidLabelR.textContent = eqDbText(rightEqMidDb);
+      _drawEqKnob(eqHighKnobR, rightEqHighDb); eqHighLabelR.textContent = eqDbText(rightEqHighDb);
+    }
+
+    // ── Knob events — left ────────────────────────────────────────────────────
+    reverbKnob.addEventListener('mousedown', e => {
+      rvbDrag = true; rvbStartY = e.clientY; rvbStartMix = reverbMix; e.preventDefault();
+    });
+    reverbKnob.addEventListener('dblclick', () => {
+      reverbMix = 0;
+      if (reverbWet) reverbWet.gain.value = 0;
+      if (reverbDry) reverbDry.gain.value = 1;
+      drawReverbKnob(); reverbLabel.textContent = '0%';
+    });
+    inputGainKnob.addEventListener('mousedown', e => {
+      inputKnobDrag = true; inputKnobStartY = e.clientY; inputKnobStartDb = inputGainDb; e.preventDefault();
+    });
+    inputGainKnob.addEventListener('dblclick', () => {
+      inputGainDb = 0; if (sampleGainNode) sampleGainNode.gain.value = 1;
+      drawInputGainKnob(); inputGainLabel.textContent = '+0.0 dB';
+      if (audioBuffer) drawWaveform();
+    });
+
+    // ── Knob events — right ───────────────────────────────────────────────────
+    reverbKnobR.addEventListener('mousedown', e => {
+      rightRvbDrag = true; rightRvbStartY = e.clientY; rightRvbStartMix = rightReverbMix; e.preventDefault();
+    });
+    reverbKnobR.addEventListener('dblclick', () => {
+      rightReverbMix = 0;
+      if (rightReverbWet) rightReverbWet.gain.value = 0;
+      if (rightReverbDry) rightReverbDry.gain.value = 1;
+      drawRightReverbKnob(); reverbLabelR.textContent = '0%';
+    });
+    inputGainKnobR.addEventListener('mousedown', e => {
+      rightInputKnobDrag = true; rightInputKnobStartY = e.clientY; rightInputKnobStartDb = rightInputGainDb; e.preventDefault();
+    });
+    inputGainKnobR.addEventListener('dblclick', () => {
+      rightInputGainDb = 0; if (rightSampleGainNode) rightSampleGainNode.gain.value = 1;
+      drawRightInputGainKnob(); inputGainLabelR.textContent = '+0.0 dB';
+      if (rightRawBuffer) drawRightWaveform();
+    });
+
+    // ── EQ knob events — left ────────────────────────────────────────────────
+    eqLowKnob.addEventListener('mousedown',  e => { eqLowDrag  = true; eqLowStartY  = e.clientY; eqLowStartDb  = eqLowDb;  e.preventDefault(); });
+    eqMidKnob.addEventListener('mousedown',  e => { eqMidDrag  = true; eqMidStartY  = e.clientY; eqMidStartDb  = eqMidDb;  e.preventDefault(); });
+    eqHighKnob.addEventListener('mousedown', e => { eqHighDrag = true; eqHighStartY = e.clientY; eqHighStartDb = eqHighDb; e.preventDefault(); });
+    eqLowKnob.addEventListener('dblclick',  () => { eqLowDb  = 0; if (eqLowNode)  eqLowNode.gain.value  = 0; drawEqKnobs(); });
+    eqMidKnob.addEventListener('dblclick',  () => { eqMidDb  = 0; if (eqMidNode)  eqMidNode.gain.value  = 0; drawEqKnobs(); });
+    eqHighKnob.addEventListener('dblclick', () => { eqHighDb = 0; if (eqHighNode) eqHighNode.gain.value = 0; drawEqKnobs(); });
+    // ── EQ knob events — right ───────────────────────────────────────────────
+    eqLowKnobR.addEventListener('mousedown',  e => { rightEqLowDrag  = true; rightEqLowStartY  = e.clientY; rightEqLowStartDb  = rightEqLowDb;  e.preventDefault(); });
+    eqMidKnobR.addEventListener('mousedown',  e => { rightEqMidDrag  = true; rightEqMidStartY  = e.clientY; rightEqMidStartDb  = rightEqMidDb;  e.preventDefault(); });
+    eqHighKnobR.addEventListener('mousedown', e => { rightEqHighDrag = true; rightEqHighStartY = e.clientY; rightEqHighStartDb = rightEqHighDb; e.preventDefault(); });
+    eqLowKnobR.addEventListener('dblclick',  () => { rightEqLowDb  = 0; if (rightEqLowNode)  rightEqLowNode.gain.value  = 0; drawRightEqKnobs(); });
+    eqMidKnobR.addEventListener('dblclick',  () => { rightEqMidDb  = 0; if (rightEqMidNode)  rightEqMidNode.gain.value  = 0; drawRightEqKnobs(); });
+    eqHighKnobR.addEventListener('dblclick', () => { rightEqHighDb = 0; if (rightEqHighNode) rightEqHighNode.gain.value = 0; drawRightEqKnobs(); });
+
+    // ── Slot remove button helpers ────────────────────────────────────────────
+    function showRemoveBtn(canvas, slots, idx, isRight) {
+      clearTimeout(slotRemoveHideTimer); slotRemoveHideTimer = null;
+      hoveredSlotCanvas = canvas; hoveredSlotIdx = idx; hoveredSlotIsRight = isRight;
+      const r  = canvas.getBoundingClientRect();
+      const sc = canvasScale(canvas);
+      const v  = slotVertex(slots, idx);
+      const sx = r.left + r.width  / 2 + v.x * sc;
+      const sy = r.top  + r.height / 2 + v.y * sc;
+      slotRemoveBtn.style.left    = (sx + VERT_R * sc - 10) + 'px';
+      slotRemoveBtn.style.top     = (sy - VERT_R * sc - 10) + 'px';
+      slotRemoveBtn.style.display = 'flex';
+    }
+    function hideRemoveBtnSoon() {
+      slotRemoveHideTimer = setTimeout(() => { slotRemoveBtn.style.display = 'none'; hoveredSlotIdx = -1; }, 120);
+    }
+
+    slotRemoveBtn.addEventListener('mouseenter', () => { clearTimeout(slotRemoveHideTimer); slotRemoveHideTimer = null; });
+    slotRemoveBtn.addEventListener('mouseleave', hideRemoveBtnSoon);
+    slotRemoveBtn.addEventListener('click', () => {
+      slotRemoveBtn.style.display = 'none';
+      slotNormPopup.style.display = 'none'; normHoveredSlotIdx = -1;
+      if (hoveredSlotIdx < 0) return;
+      const removedIdx = hoveredSlotIdx;
+      if (hoveredSlotIsRight) {
+        rightIrSlots.splice(removedIdx, 1);
+        liveRemoveRightIrSlot(removedIdx);
+        rightBlendPt = constrainBlend(rightBlendPt.x, rightBlendPt.y);
+        drawRightPolygon();
+        setRightStatus(`Removed slot ${removedIdx + 1}.`);
+      } else {
+        irSlots.splice(removedIdx, 1);
+        liveRemoveIrSlot(removedIdx);
+        blendPt = constrainBlend(blendPt.x, blendPt.y);
+        drawPolygon();
+        setStatus(`Removed slot ${removedIdx + 1}.`);
+      }
+      hoveredSlotIdx = -1;
+    });
+
+    slotNormPopup.addEventListener('mouseenter', () => { clearTimeout(normHideTimer); normHideTimer = null; });
+    slotNormPopup.addEventListener('mouseleave', hideNormPopupSoon);
+    normKnobCanvas.addEventListener('mousedown', e => {
+      if (normHoveredSlotIdx < 0) return;
+      normKnobDrag = true;
+      normKnobStartY = e.clientY;
+      const slots = normHoveredIsRight ? rightIrSlots : irSlots;
+      normKnobStartDb = slots[normHoveredSlotIdx]?.normGainDb ?? 0;
+      e.preventDefault();
+    });
+
+    // ── Add IR buttons ────────────────────────────────────────────────────────
+    btnAddIr.addEventListener('click',  () => { pendingSlot = null;      irFileInput.click();  });
+    btnAddIrR.addEventListener('click', () => { rightPendingSlot = null; irFileInputR.click(); });
+
+    // ── Blend canvas events — left ────────────────────────────────────────────
+    blendCanvas.addEventListener('mousedown', e => {
+      if (irSlots.length < 2) return;
+      const p = canvasPos(blendCanvas, e);
+      if (Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT) { hexDrag = true; e.preventDefault(); }
+    });
+    blendCanvas.addEventListener('click', e => {
+      if (hexDrag) return;
+      const p = canvasPos(blendCanvas, e);
+      slotVertices(irSlots).forEach((v, i) => {
+        if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { pendingSlot = i; irFileInput.click(); }
+      });
+    });
+    blendCanvas.addEventListener('mousemove', e => {
+      const p = canvasPos(blendCanvas, e);
+      const nearBlend  = irSlots.length >= 2 && Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT;
+      let nearIdx = -1;
+      slotVertices(irSlots).forEach((v, i) => { if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) nearIdx = i; });
+      blendCanvas.style.cursor = nearBlend ? 'grab' : nearIdx >= 0 ? 'pointer' : 'default';
+      if (nearIdx >= 0) { showRemoveBtn(blendCanvas, irSlots, nearIdx, false); showNormPopup(blendCanvas, irSlots, nearIdx, false); }
+      else { hideRemoveBtnSoon(); hideNormPopupSoon(); }
+    });
+    blendCanvas.addEventListener('mouseleave', () => { hideRemoveBtnSoon(); hideNormPopupSoon(); });
+
+    // ── Blend canvas events — right ───────────────────────────────────────────
+    blendCanvasR.addEventListener('mousedown', e => {
+      if (rightIrSlots.length < 2) return;
+      const p = canvasPos(blendCanvasR, e);
+      if (Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT) { rightHexDrag = true; e.preventDefault(); }
+    });
+    blendCanvasR.addEventListener('click', e => {
+      if (rightHexDrag) return;
+      const p = canvasPos(blendCanvasR, e);
+      slotVertices(rightIrSlots).forEach((v, i) => {
+        if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { rightPendingSlot = i; irFileInputR.click(); }
+      });
+    });
+    blendCanvasR.addEventListener('mousemove', e => {
+      const p = canvasPos(blendCanvasR, e);
+      const nearBlend  = rightIrSlots.length >= 2 && Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT;
+      let nearIdx = -1;
+      slotVertices(rightIrSlots).forEach((v, i) => { if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) nearIdx = i; });
+      blendCanvasR.style.cursor = nearBlend ? 'grab' : nearIdx >= 0 ? 'pointer' : 'default';
+      if (nearIdx >= 0) { showRemoveBtn(blendCanvasR, rightIrSlots, nearIdx, true); showNormPopup(blendCanvasR, rightIrSlots, nearIdx, true); }
+      else { hideRemoveBtnSoon(); hideNormPopupSoon(); }
+    });
+    blendCanvasR.addEventListener('mouseleave', () => { hideRemoveBtnSoon(); hideNormPopupSoon(); });
+
+    // ── IR file loading — left ────────────────────────────────────────────────
+    irFileInput.addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      setStatus('Loading IR…');
+      try {
+        const buf        = await getAudioCtx().decodeAudioData(await file.arrayBuffer());
+        const normGainDb = await computeNormGainDbFromWaveform(buf, audioBuffer, loopStart, loopEnd);
+        const slot       = { buffer: buf, name: file.name, normGainDb };
+        if (pendingSlot !== null) {
+          const idx = pendingSlot;
+          irSlots[idx] = slot; setStatus(`Slot ${idx+1} replaced.`);
+          pendingSlot = null; drawPolygon();
+          if (isPlaying) liveReplaceIrSlot(idx);
+        } else {
+          irSlots.push(slot); setStatus(`Slot ${irSlots.length}: ${file.name}`);
+          pendingSlot = null; drawPolygon();
+          if (isPlaying) liveAddIrSlot(irSlots.length - 1);
+        }
+      } catch { setStatus('Failed to decode IR.'); pendingSlot = null; }
+      irFileInput.value = '';
+    });
+
+    // ── IR file loading — right ───────────────────────────────────────────────
+    irFileInputR.addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      setRightStatus('Loading IR…');
+      try {
+        const buf        = await getAudioCtx().decodeAudioData(await file.arrayBuffer());
+        const normGainDb = await computeNormGainDbFromWaveform(buf, audioBuffer, loopStart, loopEnd);
+        const slot       = { buffer: buf, name: file.name, normGainDb };
+        if (rightPendingSlot !== null) {
+          const idx = rightPendingSlot;
+          rightIrSlots[idx] = slot; setRightStatus(`Slot ${idx+1} replaced.`);
+          rightPendingSlot = null; drawRightPolygon();
+          if (isPlaying && rightAudioBuffer) liveReplaceRightIrSlot(idx);
+        } else {
+          rightIrSlots.push(slot); setRightStatus(`Slot ${rightIrSlots.length}: ${file.name}`);
+          rightPendingSlot = null; drawRightPolygon();
+          if (isPlaying && rightAudioBuffer) liveAddRightIrSlot(rightIrSlots.length - 1);
+        }
+      } catch { setRightStatus('Failed to decode IR.'); rightPendingSlot = null; }
+      irFileInputR.value = '';
+    });
+
+    function updateBlendGains() {
+      const W = slotWeights(irSlots, blendPt);
+      slotGains.forEach((gn, i) => {
+        if (gn) gn.gain.value = (W[i] ?? 0) * dbToLinear(irSlots[i]?.normGainDb ?? 0);
+      });
+      drawPolygon();
+    }
+    function updateRightBlendGains() {
+      const W = slotWeights(rightIrSlots, rightBlendPt);
+      rightSlotGains.forEach((gn, i) => {
+        if (gn) gn.gain.value = (W[i] ?? 0) * dbToLinear(rightIrSlots[i]?.normGainDb ?? 0);
+      });
+      drawRightPolygon();
+    }
+
+    // Live IR graph updates — add/replace/remove IR nodes without stopping playback.
+    // Left panel
+    function liveAddIrSlot(idx) {
+      if (!isPlaying || !sampleGainNode) return;
+      const ctx  = getAudioCtx();
+      const slot = irSlots[idx];
+      // irSlots already has the new slot pushed; length===1 means this is the first slot
+      if (irSlots.length === 1) {
+        if (!wetMaster) {
+          wetMaster = ctx.createGain();
+          wetMaster.connect(reverbDry); wetMaster.connect(reverbWet);
+        }
+        wetMaster.gain.value = irBypassed ? 0 : 1;
+        if (!irBypassed) dryGain.gain.value = 0;
+      }
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const sg   = ctx.createGain();
+      sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
+      slotConvs[idx] = conv; slotGains[idx] = sg;
+      updateBlendGains();
+    }
+    function liveReplaceIrSlot(idx) {
+      if (!isPlaying || !sampleGainNode) return;
+      const ctx  = getAudioCtx();
+      const slot = irSlots[idx];
+      if (slotConvs[idx]) {
+        try { sampleGainNode.disconnect(slotConvs[idx]); } catch {}
+        try { slotConvs[idx].disconnect(slotGains[idx]); } catch {}
+      }
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      sampleGainNode.connect(conv); conv.connect(slotGains[idx]);
+      slotConvs[idx] = conv;
+      updateBlendGains();
+    }
+    function liveRemoveIrSlot(idx) {
+      if (!isPlaying || !sampleGainNode) return;
+      if (slotConvs[idx]) {
+        try { sampleGainNode.disconnect(slotConvs[idx]); } catch {}
+        try { slotConvs[idx].disconnect(slotGains[idx]); } catch {}
+      }
+      if (slotGains[idx] && wetMaster) { try { slotGains[idx].disconnect(wetMaster); } catch {} }
+      slotConvs.splice(idx, 1); slotGains.splice(idx, 1);
+      // irSlots already spliced before this call
+      if (irSlots.length === 0) {
+        if (dryGain) dryGain.gain.value = 1;
+        if (wetMaster) wetMaster.gain.value = 0;
+      } else {
+        updateBlendGains();
+      }
+    }
+    // Right panel — mirrors of the above
+    function liveAddRightIrSlot(idx) {
+      if (!isPlaying || !rightSampleGainNode) return;
+      const ctx  = getAudioCtx();
+      const slot = rightIrSlots[idx];
+      if (rightIrSlots.length === 1) {
+        if (!rightWetMaster) {
+          rightWetMaster = ctx.createGain();
+          rightWetMaster.connect(rightReverbDry); rightWetMaster.connect(rightReverbWet);
+        }
+        rightWetMaster.gain.value = rightIrBypassed ? 0 : 1;
+        if (!rightIrBypassed) rightDryGain.gain.value = 0;
+      }
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const sg   = ctx.createGain();
+      rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
+      rightSlotConvs[idx] = conv; rightSlotGains[idx] = sg;
+      updateRightBlendGains();
+    }
+    function liveReplaceRightIrSlot(idx) {
+      if (!isPlaying || !rightSampleGainNode) return;
+      const ctx  = getAudioCtx();
+      const slot = rightIrSlots[idx];
+      if (rightSlotConvs[idx]) {
+        try { rightSampleGainNode.disconnect(rightSlotConvs[idx]); } catch {}
+        try { rightSlotConvs[idx].disconnect(rightSlotGains[idx]); } catch {}
+      }
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      rightSampleGainNode.connect(conv); conv.connect(rightSlotGains[idx]);
+      rightSlotConvs[idx] = conv;
+      updateRightBlendGains();
+    }
+    function liveRemoveRightIrSlot(idx) {
+      if (!isPlaying || !rightSampleGainNode) return;
+      if (rightSlotConvs[idx]) {
+        try { rightSampleGainNode.disconnect(rightSlotConvs[idx]); } catch {}
+        try { rightSlotConvs[idx].disconnect(rightSlotGains[idx]); } catch {}
+      }
+      if (rightSlotGains[idx] && rightWetMaster) { try { rightSlotGains[idx].disconnect(rightWetMaster); } catch {} }
+      rightSlotConvs.splice(idx, 1); rightSlotGains.splice(idx, 1);
+      if (rightIrSlots.length === 0) {
+        if (rightDryGain) rightDryGain.gain.value = 1;
+        if (rightWetMaster) rightWetMaster.gain.value = 0;
+      } else {
+        updateRightBlendGains();
+      }
+    }
+
+    // ── Blended IR export ─────────────────────────────────────────────────────
+    function computeBlendedIR(slots, bp) {
+      const W    = slotWeights(slots, bp);
+      let maxLen = 0, maxCh = 1;
+      slots.forEach(s => { maxLen = Math.max(maxLen, s.buffer.length); maxCh = Math.max(maxCh, s.buffer.numberOfChannels); });
+      const chData = Array.from({ length: maxCh }, () => new Float32Array(maxLen));
+      slots.forEach((slot, i) => {
+        const g = W[i] * dbToLinear(slot.normGainDb ?? 0);
+        for (let ch = 0; ch < maxCh; ch++) {
+          const src = slot.buffer.getChannelData(Math.min(ch, slot.buffer.numberOfChannels - 1));
+          const dst = chData[ch];
+          for (let n = 0; n < src.length; n++) dst[n] += src[n] * g;
+        }
+      });
+      // Normalize to 0 dBFS — standard level; waveform-based normGainDb handles level on load
+      let peakRaw = 0;
+      for (let ch = 0; ch < maxCh; ch++) {
+        const d = chData[ch];
+        for (let n = 0; n < d.length; n++) { const a = Math.abs(d[n]); if (a > peakRaw) peakRaw = a; }
+      }
+      if (peakRaw > 1e-9) {
+        for (let ch = 0; ch < maxCh; ch++) {
+          const d = chData[ch];
+          for (let n = 0; n < d.length; n++) d[n] /= peakRaw;
+        }
+      }
+      return { chData, numCh: maxCh, numSamples: maxLen, sr: getAudioCtx().sampleRate };
+    }
+
+    // K-weighting filter coefficients (ITU-R BS.1770) for arbitrary sample rate.
+    function kWeightingCoeffs(fs) {
+      // Stage 1 — pre-filter (high-shelf, ~+4 dB above ~1.7 kHz)
+      const f0 = 1681.974450955533, Q1 = 0.7071752369554196;
+      const Vh = Math.pow(10, 3.99984385397 / 20);
+      const Vb = Math.pow(Vh, 0.4996667741545416);
+      const K1 = Math.tan(Math.PI * f0 / fs), K1k = K1 * K1;
+      const d1 = 1 + K1 / Q1 + K1k;
+      const s1 = [
+        (Vh + Vb / Q1 * K1 + K1k) / d1,
+        2 * (K1k - Vh) / d1,
+        (Vh - Vb / Q1 * K1 + K1k) / d1,
+        2 * (K1k - 1) / d1,
+        (1 - K1 / Q1 + K1k) / d1,
+      ];
+      // Stage 2 — RLB high-pass at 38.13 Hz
+      const f1 = 38.13535458234846, Q2 = 0.5003270373238773;
+      const K2 = Math.tan(Math.PI * f1 / fs), K2k = K2 * K2;
+      const d2 = 1 + K2 / Q2 + K2k;
+      const s2 = [
+        1 / d2, -2 / d2, 1 / d2,
+        2 * (K2k - 1) / d2,
+        (1 - K2 / Q2 + K2k) / d2,
+      ];
+      return [s1, s2];
+    }
+
+    function applyKFilter(data, [[b0a, b1a, b2a, a1a, a2a], [b0b, b1b, b2b, a1b, a2b]]) {
+      const n = data.length, out = new Float32Array(n);
+      let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+      for (let i = 0; i < n; i++) {
+        const x = data[i];
+        const y = b0a*x + b1a*x1 + b2a*x2 - a1a*y1 - a2a*y2;
+        x2 = x1; x1 = x; y2 = y1; y1 = y; out[i] = y;
+      }
+      let u1 = 0, u2 = 0, v1 = 0, v2 = 0;
+      for (let i = 0; i < n; i++) {
+        const u = out[i];
+        const v = b0b*u + b1b*u1 + b2b*u2 - a1b*v1 - a2b*v2;
+        u2 = u1; u1 = u; v2 = v1; v1 = v; out[i] = v;
+      }
+      return out;
+    }
+
+    // Convolves up to 2s of the waveform loop through the IR offline, then returns the
+    // normGainDb needed to match the convolved output's K-weighted loudness (LUFS) to the dry.
+    // Falls back to peak normalization when no waveform is available.
+    async function computeNormGainDbFromWaveform(irBuffer, waveBuffer, loopStartFrac, loopEndFrac) {
+      if (!waveBuffer) return computeNormGainDb(irBuffer);
+      const sr    = waveBuffer.sampleRate;
+      const s0    = Math.floor((loopStartFrac ?? 0) * waveBuffer.length);
+      const s1    = Math.floor((loopEndFrac   ?? 1) * waveBuffer.length);
+      const len   = Math.min(s1 - s0, Math.round(2 * sr)); // cap at 2 seconds
+      if (len < 512) return computeNormGainDb(irBuffer);
+
+      const nCh = waveBuffer.numberOfChannels;
+      const offline = new OfflineAudioContext(nCh, len + irBuffer.length, sr);
+      const excerpt = offline.createBuffer(nCh, len, sr);
+      for (let ch = 0; ch < nCh; ch++) {
+        const src = waveBuffer.getChannelData(ch), dst = excerpt.getChannelData(ch);
+        for (let n = 0; n < len; n++) dst[n] = src[s0 + n];
+      }
+      const bufSrc = offline.createBufferSource();
+      bufSrc.buffer = excerpt;
+      const conv = offline.createConvolver();
+      conv.normalize = false;
+      conv.buffer = irBuffer;
+      bufSrc.connect(conv); conv.connect(offline.destination); bufSrc.start(0);
+
+      const rendered = await offline.startRendering();
+
+      // Skip IR-length onset, then measure K-weighted power on the remaining window
+      const skip    = Math.min(irBuffer.length, Math.floor(len / 4));
+      const winLen  = len - skip;
+      const kCoeffs = kWeightingCoeffs(sr);
+      let sumWet = 0, sumDry = 0;
+      for (let ch = 0; ch < nCh; ch++) {
+        const wetRaw = rendered.getChannelData(ch);
+        const dryRaw = waveBuffer.getChannelData(ch);
+        const wetSlice = new Float32Array(winLen);
+        const drySlice = new Float32Array(winLen);
+        for (let n = 0; n < winLen; n++) {
+          wetSlice[n] = wetRaw[skip + n];
+          drySlice[n] = dryRaw[s0 + skip + n];
+        }
+        const wetK = applyKFilter(wetSlice, kCoeffs);
+        const dryK = applyKFilter(drySlice, kCoeffs);
+        for (let n = 0; n < winLen; n++) {
+          sumWet += wetK[n] * wetK[n];
+          sumDry += dryK[n] * dryK[n];
+        }
+      }
+      const msWet = sumWet / Math.max(nCh * winLen, 1);
+      const msDry = sumDry / Math.max(nCh * winLen, 1);
+      if (msWet < 1e-18) return computeNormGainDb(irBuffer);
+      return Math.max(NORM_GAIN_MIN, Math.min(NORM_GAIN_MAX, 10 * Math.log10(msDry / msWet)));
+    }
+
+    // Recompute normGainDb for every loaded IR using the current waveform.
+    // Called after a new recording is made so existing IRs stay calibrated.
+    async function recomputeAllNormGainDb() {
+      const wave = audioBuffer;
+      if (!wave) return;
+      const tasks = [
+        ...irSlots.map((slot, i) =>
+          computeNormGainDbFromWaveform(slot.buffer, wave, loopStart, loopEnd).then(db => {
+            slot.normGainDb = db;
+            const W = slotWeights(irSlots, blendPt);
+            if (slotGains[i]) slotGains[i].gain.value = (W[i] ?? 0) * dbToLinear(db);
+          })
+        ),
+        ...rightIrSlots.map((slot, i) =>
+          computeNormGainDbFromWaveform(slot.buffer, wave, loopStart, loopEnd).then(db => {
+            slot.normGainDb = db;
+            const W = slotWeights(rightIrSlots, rightBlendPt);
+            if (rightSlotGains[i]) rightSlotGains[i].gain.value = (W[i] ?? 0) * dbToLinear(db);
+          })
+        ),
+      ];
+      await Promise.all(tasks);
+      drawPolygon(); drawRightPolygon();
+    }
+
+    function audioBufferToWav({ chData, numCh, numSamples, sr }) {
+      const bps = 2, dataSize = numSamples * numCh * bps;
+      const ab = new ArrayBuffer(44 + dataSize);
+      const v  = new DataView(ab);
+      const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+      str(0,  'RIFF'); v.setUint32(4, 36 + dataSize, true); str(8, 'WAVE');
+      str(12, 'fmt '); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, numCh, true);
+      v.setUint32(24, sr, true); v.setUint32(28, sr * numCh * bps, true);
+      v.setUint16(32, numCh * bps, true); v.setUint16(34, 16, true);
+      str(36, 'data'); v.setUint32(40, dataSize, true);
+      let off = 44;
+      for (let n = 0; n < numSamples; n++) {
+        for (let ch = 0; ch < numCh; ch++) {
+          const s = Math.max(-1, Math.min(1, chData[ch][n]));
+          v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true); off += 2;
+        }
+      }
+      return new Blob([ab], { type: 'audio/wav' });
+    }
+
+    async function exportBlendedIR(slots, bp, suggestedName, statusFn) {
+      if (slots.length === 0) return;
+      const blended = computeBlendedIR(slots, bp);
+      const blob    = audioBufferToWav(blended);
+      try {
+        const handle   = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: 'WAV Audio', accept: { 'audio/wav': ['.wav'] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(await blob.arrayBuffer());
+        await writable.close();
+        statusFn(`Exported ${handle.name}.`);
+      } catch (e) {
+        if (e.name !== 'AbortError') statusFn('Export failed: ' + e.message);
+      }
+    }
+
+    btnExportIr.addEventListener('click', () =>
+      exportBlendedIR(irSlots, blendPt, 'blended-ir-rhythm.wav', setStatus)
+    );
+    btnExportIrR.addEventListener('click', () =>
+      exportBlendedIR(rightIrSlots, rightBlendPt, 'blended-ir-lead.wav', setRightStatus)
+    );
+
+    // ── Unified document listeners ─────────────────────────────────────────────
+    document.addEventListener('mousemove', e => {
+      if (rvbDrag) {
+        reverbMix = Math.max(0, Math.min(1, rvbStartMix + (rvbStartY - e.clientY) * RVB_PER_PX));
+        if (reverbWet) reverbWet.gain.value = reverbMix;
+        if (reverbDry) reverbDry.gain.value = 1 - reverbMix;
+        drawReverbKnob(); reverbLabel.textContent = Math.round(reverbMix * 100) + '%';
+      }
+      if (inputKnobDrag) {
+        inputGainDb = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, inputKnobStartDb + (inputKnobStartY - e.clientY) * DB_PER_PX));
+        if (sampleGainNode) sampleGainNode.gain.value = dbToLinear(inputGainDb);
+        drawInputGainKnob(); inputGainLabel.textContent = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
+        if (audioBuffer) drawWaveform();
+      }
+      if (hexDrag) {
+        const p = canvasPos(blendCanvas, e);
+        blendPt = constrainBlend(p.x, p.y);
+        updateBlendGains();
+      }
+      if (waveDrag) {
+        const rect = wfContainer.getBoundingClientRect();
+        const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        if (waveDrag === 'left') loopStart = Math.min(frac, loopEnd - 0.02);
+        else                     loopEnd   = Math.max(frac, loopStart + 0.02);
+        updateRegion();
+      }
+      // Right panel
+      if (rightRvbDrag) {
+        rightReverbMix = Math.max(0, Math.min(1, rightRvbStartMix + (rightRvbStartY - e.clientY) * RVB_PER_PX));
+        if (rightReverbWet) rightReverbWet.gain.value = rightReverbMix;
+        if (rightReverbDry) rightReverbDry.gain.value = 1 - rightReverbMix;
+        drawRightReverbKnob(); reverbLabelR.textContent = Math.round(rightReverbMix * 100) + '%';
+      }
+      if (rightInputKnobDrag) {
+        rightInputGainDb = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, rightInputKnobStartDb + (rightInputKnobStartY - e.clientY) * DB_PER_PX));
+        if (rightSampleGainNode) rightSampleGainNode.gain.value = dbToLinear(rightInputGainDb);
+        drawRightInputGainKnob(); inputGainLabelR.textContent = (rightInputGainDb >= 0 ? '+' : '') + rightInputGainDb.toFixed(1) + ' dB';
+        if (rightRawBuffer) drawRightWaveform();
+      }
+      if (eqLowDrag)  { eqLowDb  = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, eqLowStartDb  + (eqLowStartY  - e.clientY) * DB_PER_PX)); if (eqLowNode)  eqLowNode.gain.value  = eqLowDb;  drawEqKnobs(); }
+      if (eqMidDrag)  { eqMidDb  = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, eqMidStartDb  + (eqMidStartY  - e.clientY) * DB_PER_PX)); if (eqMidNode)  eqMidNode.gain.value  = eqMidDb;  drawEqKnobs(); }
+      if (eqHighDrag) { eqHighDb = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, eqHighStartDb + (eqHighStartY - e.clientY) * DB_PER_PX)); if (eqHighNode) eqHighNode.gain.value = eqHighDb; drawEqKnobs(); }
+      if (rightEqLowDrag)  { rightEqLowDb  = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, rightEqLowStartDb  + (rightEqLowStartY  - e.clientY) * DB_PER_PX)); if (rightEqLowNode)  rightEqLowNode.gain.value  = rightEqLowDb;  drawRightEqKnobs(); }
+      if (rightEqMidDrag)  { rightEqMidDb  = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, rightEqMidStartDb  + (rightEqMidStartY  - e.clientY) * DB_PER_PX)); if (rightEqMidNode)  rightEqMidNode.gain.value  = rightEqMidDb;  drawRightEqKnobs(); }
+      if (rightEqHighDrag) { rightEqHighDb = Math.max(-EQ_MAX_DB, Math.min(EQ_MAX_DB, rightEqHighStartDb + (rightEqHighStartY - e.clientY) * DB_PER_PX)); if (rightEqHighNode) rightEqHighNode.gain.value = rightEqHighDb; drawRightEqKnobs(); }
+      if (rightHexDrag) {
+        const p = canvasPos(blendCanvasR, e);
+        rightBlendPt = constrainBlend(p.x, p.y);
+        updateRightBlendGains();
+      }
+      if (normKnobDrag && normHoveredSlotIdx >= 0) {
+        const slots = normHoveredIsRight ? rightIrSlots : irSlots;
+        const gains = normHoveredIsRight ? rightSlotGains : slotGains;
+        const W     = normHoveredIsRight
+          ? slotWeights(rightIrSlots, rightBlendPt)
+          : slotWeights(irSlots, blendPt);
+        const slot = slots[normHoveredSlotIdx];
+        if (slot) {
+          slot.normGainDb = Math.max(NORM_GAIN_MIN, Math.min(NORM_GAIN_MAX,
+            normKnobStartDb + (normKnobStartY - e.clientY) * DB_PER_PX));
+          const gn = gains[normHoveredSlotIdx];
+          if (gn) gn.gain.value = (W[normHoveredSlotIdx] ?? 0) * dbToLinear(slot.normGainDb);
+          drawNormKnob(slot.normGainDb);
+          normDbLabel.textContent = (slot.normGainDb >= 0 ? '+' : '') + slot.normGainDb.toFixed(1) + ' dB';
+        }
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      rvbDrag = inputKnobDrag = hexDrag = false; waveDrag = null;
+      rightRvbDrag = rightInputKnobDrag = rightHexDrag = false;
+      normKnobDrag = false;
+      eqLowDrag = eqMidDrag = eqHighDrag = false;
+      rightEqLowDrag = rightEqMidDrag = rightEqHighDrag = false;
+    });
+
+    // ── Audio context ─────────────────────────────────────────────────────────
+    function getAudioCtx() {
+      if (!audioCtx) audioCtx = new AudioContext();
+      return audioCtx;
+    }
+
+    // ── AudioWorklet recorder ─────────────────────────────────────────────────
+    const RECORDER_WORKLET_CODE = `
+class RecorderProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._on = false;
+    this._first = true;
+    this.port.onmessage = ({ data }) => {
+      if (data === 'start') { this._on = true; this._first = true; }
+      else if (data === 'stop') { this._on = false; }
+    };
+  }
+  process(inputs) {
+    if (!this._on) return true;
+    const ch = inputs[0] && inputs[0][0];
+    if (!ch) return true;
+    const copy = ch.slice();
+    this.port.postMessage(
+      this._first ? { first: true, time: currentTime, buf: copy.buffer }
+                  : { buf: copy.buffer },
+      [copy.buffer]
+    );
+    if (this._first) this._first = false;
+    return true;
+  }
+}
+registerProcessor('recorder-processor', RecorderProcessor);
+`;
+    let workletCtx = null;
+    let workletAvailable = null; // null=untested, true=ok, false=unavailable
+    async function ensureWorklet() {
+      const ctx = getAudioCtx();
+      if (workletCtx === ctx) return true;
+      if (workletAvailable === false) return false;
+      await ctx.resume();
+      const blob = new Blob([RECORDER_WORKLET_CODE], { type: 'application/javascript' });
+      const url  = URL.createObjectURL(blob);
+      try {
+        await ctx.audioWorklet.addModule(url);
+        workletCtx = ctx; workletAvailable = true; return true;
+      } catch(e) {
+        console.warn('AudioWorklet unavailable, falling back to ScriptProcessorNode:', e);
+        workletAvailable = false; return false;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    // ── Left audio graph ──────────────────────────────────────────────────────
+    function startPlay() {
+      const ctx   = getAudioCtx();
+      const hasIR = irSlots.length > 0;
+
+      sourceNode        = ctx.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+
+      sampleGainNode            = ctx.createGain();
+      sampleGainNode.gain.value = dbToLinear(inputGainDb);
+      sourceNode.connect(sampleGainNode);
+
+      // EQ master bus (post-reverb)
+      masterBus  = ctx.createGain(); masterBus.gain.value = 1;
+      eqLowNode  = ctx.createBiquadFilter();
+      eqLowNode.type = 'lowshelf';  eqLowNode.frequency.value  = 200;  eqLowNode.gain.value  = eqLowDb;
+      eqMidNode  = ctx.createBiquadFilter();
+      eqMidNode.type = 'peaking';   eqMidNode.frequency.value  = 800;  eqMidNode.Q.value = 0.9; eqMidNode.gain.value  = eqMidDb;
+      eqHighNode = ctx.createBiquadFilter();
+      eqHighNode.type = 'highshelf'; eqHighNode.frequency.value = 3200; eqHighNode.gain.value = eqHighDb;
+      masterBus.connect(eqLowNode); eqLowNode.connect(eqMidNode); eqMidNode.connect(eqHighNode); eqHighNode.connect(ctx.destination);
+
+      dryGain            = ctx.createGain();
+      dryGain.gain.value = (!hasIR || irBypassed) ? 1 : 0;
+      dryGain.connect(masterBus);
+      sampleGainNode.connect(dryGain);
+
+      slotGains = [];
+      reverbNode           = ctx.createConvolver();
+      reverbNode.buffer    = makeReverbIR(ctx);
+      reverbWet            = ctx.createGain(); reverbWet.gain.value = reverbMix;
+      reverbDry            = ctx.createGain(); reverbDry.gain.value = 1 - reverbMix;
+      reverbDry.connect(masterBus);
+      reverbWet.connect(reverbNode); reverbNode.connect(masterBus);
+
+      slotGains = []; slotConvs = [];
+      if (hasIR) {
+        wetMaster            = ctx.createGain(); wetMaster.gain.value = irBypassed ? 0 : 1;
+        wetMaster.connect(reverbDry); wetMaster.connect(reverbWet);
+        const W = slotWeights(irSlots, blendPt);
+        irSlots.forEach((slot, i) => {
+          const sg = ctx.createGain();
+          sg.gain.value = (W[i] ?? 0) * dbToLinear(slot.normGainDb ?? 0);
+          slotGains[i] = sg;
+          const conv = ctx.createConvolver();
+          conv.normalize = false;
+          conv.buffer = slot.buffer;
+          sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
+          slotConvs[i] = conv;
+        });
+      }
+
+      sourceNode.loop      = true;
+      sourceNode.loopStart = loopStart * audioBuffer.duration;
+      sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
+      // Schedule slightly in the future so playStart is an exact AudioContext timestamp,
+      // not an approximation that's one render quantum early.
+      const startAt = ctx.currentTime + (ctx.baseLatency || 0.005);
+      sourceNode.start(startAt, sourceNode.loopStart);
+      playStart = startAt;
+      isPlaying = true;
+      playIcon.className = 'icon-pause';
+      btnPlay.childNodes[1].textContent = ' Pause';
+      playhead.classList.add('active');
+      animatePlayhead();
+
+      // Also start right panel if recorded
+      if (rightAudioBuffer) {
+        const T_L = (loopEnd - loopStart) * audioBuffer.duration;
+        const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+        startRightPlay(playStart + effectivePhase, 0);
+      }
+      updateRightRecordBtn();
+    }
+
+    function stopPlay() {
+      if (sourceNode) { try { sourceNode.stop(); } catch {} }
+      stopRightPlay();
+      isPlaying = false;
+      playIcon.className = 'icon-play';
+      btnPlay.childNodes[1].textContent = ' Play';
+      playhead.classList.remove('active');
+      cancelAnimationFrame(animFrame);
+      updateRightRecordBtn();
+    }
+
+    function restartPlay() { stopPlay(); startPlay(); }
+    function togglePlay()  { isPlaying ? stopPlay() : startPlay(); }
+
+    function animatePlayhead() {
+      const ctx     = getAudioCtx();
+      const dur     = (loopEnd - loopStart) * audioBuffer.duration;
+      const elapsed = ctx.currentTime - playStart;
+      const pos     = loopStart * audioBuffer.duration + (elapsed % dur);
+      playhead.style.left = (pos / audioBuffer.duration * 100) + '%';
+      if (isPlaying) animFrame = requestAnimationFrame(animatePlayhead);
+    }
+
+    // ── Right audio graph ─────────────────────────────────────────────────────
+    function startRightPlay(scheduleWhen, startOff) {
+      const ctx    = getAudioCtx();
+      const hasIR  = rightIrSlots.length > 0;
+
+      rightSourceNode        = ctx.createBufferSource();
+      rightSourceNode.buffer = rightAudioBuffer;
+      rightSourceNode.loop   = true;
+      rightSourceNode.loopEnd = rightPaddedDuration;
+
+      rightSampleGainNode            = ctx.createGain();
+      rightSampleGainNode.gain.value = dbToLinear(rightInputGainDb);
+      rightSourceNode.connect(rightSampleGainNode);
+
+      // EQ master bus (post-reverb)
+      rightMasterBus  = ctx.createGain(); rightMasterBus.gain.value = 1;
+      rightEqLowNode  = ctx.createBiquadFilter();
+      rightEqLowNode.type = 'lowshelf';  rightEqLowNode.frequency.value  = 200;  rightEqLowNode.gain.value  = rightEqLowDb;
+      rightEqMidNode  = ctx.createBiquadFilter();
+      rightEqMidNode.type = 'peaking';   rightEqMidNode.frequency.value  = 800;  rightEqMidNode.Q.value = 0.9; rightEqMidNode.gain.value  = rightEqMidDb;
+      rightEqHighNode = ctx.createBiquadFilter();
+      rightEqHighNode.type = 'highshelf'; rightEqHighNode.frequency.value = 3200; rightEqHighNode.gain.value = rightEqHighDb;
+      rightMasterBus.connect(rightEqLowNode); rightEqLowNode.connect(rightEqMidNode); rightEqMidNode.connect(rightEqHighNode); rightEqHighNode.connect(ctx.destination);
+
+      rightDryGain            = ctx.createGain();
+      rightDryGain.gain.value = (!hasIR || rightIrBypassed) ? 1 : 0;
+      rightDryGain.connect(rightMasterBus);
+      rightSampleGainNode.connect(rightDryGain);
+
+      rightSlotGains = []; rightSlotConvs = [];
+      rightReverbNode           = ctx.createConvolver();
+      rightReverbNode.buffer    = makeReverbIR(ctx);
+      rightReverbWet            = ctx.createGain(); rightReverbWet.gain.value = rightReverbMix;
+      rightReverbDry            = ctx.createGain(); rightReverbDry.gain.value = 1 - rightReverbMix;
+      rightReverbDry.connect(rightMasterBus);
+      rightReverbWet.connect(rightReverbNode); rightReverbNode.connect(rightMasterBus);
+
+      if (hasIR) {
+        rightWetMaster            = ctx.createGain(); rightWetMaster.gain.value = rightIrBypassed ? 0 : 1;
+        rightWetMaster.connect(rightReverbDry); rightWetMaster.connect(rightReverbWet);
+        const W = slotWeights(rightIrSlots, rightBlendPt);
+        rightIrSlots.forEach((slot, i) => {
+          const sg = ctx.createGain();
+          sg.gain.value = (W[i] ?? 0) * dbToLinear(slot.normGainDb ?? 0);
+          rightSlotGains[i] = sg;
+          const conv = ctx.createConvolver();
+          conv.normalize = false;
+          conv.buffer = slot.buffer;
+          rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
+          rightSlotConvs[i] = conv;
+        });
+      }
+
+      // Schedule: if in the future, use exact time; else start immediately
+      const now = ctx.currentTime;
+      if (scheduleWhen > now + 0.002) {
+        rightPlayScheduledAt = scheduleWhen;
+        rightSourceNode.start(scheduleWhen, startOff);
+      } else {
+        rightPlayScheduledAt = now;
+        rightSourceNode.start(0, startOff);
+      }
+      rightStartOffset = startOff;
+      animateRightPlayhead();
+    }
+
+    function stopRightPlay() {
+      if (rightSourceNode) { try { rightSourceNode.stop(); } catch {} rightSourceNode = null; }
+      playheadR.classList.remove('active');
+      cancelAnimationFrame(rightAnimFrame);
+    }
+
+    function restartRightPlay() {
+      if (!isPlaying || !rightAudioBuffer) return;
+      const ctx   = getAudioCtx();
+      const T_L   = (loopEnd - loopStart) * audioBuffer.duration;
+      const effPh = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+      const scheduleAt = ctx.currentTime + 0.05;
+      const startOff = ((scheduleAt - playStart - effPh) % rightPaddedDuration + rightPaddedDuration) % rightPaddedDuration;
+      stopRightPlay();
+      startRightPlay(scheduleAt, startOff);
+    }
+
+    function animateRightPlayhead() {
+      const ctx = getAudioCtx();
+      const now = ctx.currentTime;
+      if (now >= rightPlayScheduledAt) {
+        const pos = (now - rightPlayScheduledAt + rightStartOffset) % rightPaddedDuration;
+        if (pos < rightActualDuration) {
+          playheadR.style.left = (pos / rightActualDuration * 100) + '%';
+          playheadR.classList.add('active');
+        } else {
+          playheadR.classList.remove('active');
+        }
+      }
+      if (isPlaying) rightAnimFrame = requestAnimationFrame(animateRightPlayhead);
+    }
+
+    // ── Bypass ────────────────────────────────────────────────────────────────
+    btnBypass.addEventListener('click', () => {
+      irBypassed = !irBypassed;
+      btnBypass.textContent = irBypassed ? 'Bypassed' : 'Bypass';
+      btnBypass.classList.toggle('bypassed', irBypassed);
+      if (wetMaster) wetMaster.gain.value = irBypassed ? 0 : 1;
+      if (dryGain)   dryGain.gain.value   = irBypassed ? 1 : 0;
+    });
+
+    btnBypassR.addEventListener('click', () => {
+      rightIrBypassed = !rightIrBypassed;
+      btnBypassR.textContent = rightIrBypassed ? 'Bypassed' : 'Bypass';
+      btnBypassR.classList.toggle('bypassed', rightIrBypassed);
+      if (rightWetMaster) rightWetMaster.gain.value = rightIrBypassed ? 0 : 1;
+      if (rightDryGain)   rightDryGain.gain.value   = rightIrBypassed ? 1 : 0;
+    });
+
+    // ── Left recording ────────────────────────────────────────────────────────
+    btnRecord.addEventListener('click', () => {
+      mediaRec?.state === 'recording' ? stopRecording() : startRecording();
+    });
+
+    async function startRecording() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
+        });
+      } catch { setStatus('Microphone access denied.'); return; }
+      chunks = []; mediaRec = new MediaRecorder(stream);
+      mediaRec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRec.onstop          = onRecordingStop;
+      mediaRec.start(100);
+      btnRecord.textContent = 'Stop'; btnRecord.classList.add('recording');
+      dot.classList.add('visible'); setStatus('Recording…');
+    }
+
+    function stopRecording() {
+      mediaRec.stop(); stream.getTracks().forEach(t => t.stop());
+      btnRecord.textContent = 'Record'; btnRecord.classList.remove('recording');
+      dot.classList.remove('visible'); setStatus('Processing…');
+    }
+
+    async function onRecordingStop() {
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      try { audioBuffer = await getAudioCtx().decodeAudioData(await blob.arrayBuffer()); }
+      catch { setStatus('Failed to decode audio.'); return; }
+      wfContainer.classList.add('visible');
+      requestAnimationFrame(() => { drawWaveform(); showHandles(); });
+      btnPlay.classList.add('visible'); btnReset.classList.add('visible');
+      durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
+      setStatus('Ready.');
+      updateRightRecordBtn();
+      recomputeAllNormGainDb();
+    }
+
+    // ── Right recording ───────────────────────────────────────────────────────
+    btnRecordR.addEventListener('click', () => {
+      if (rightIsRecording) { stopRightRecording(); return; }
+      startRightRecording().catch(e => { setRightStatus('Error: ' + e.message); console.error(e); });
+    });
+
+    async function startRightRecording() {
+      if (!audioBuffer || !isPlaying) { setRightStatus('Start left playback first.'); return; }
+      const ctx = getAudioCtx();
+      try {
+        rightStream = await navigator.mediaDevices.getUserMedia({
+          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
+        });
+      } catch { setRightStatus('Microphone access denied.'); return; }
+
+      const useWorklet = await ensureWorklet();
+      rightPCMChunks = [];
+      rightRecordStartCtxTime = 0;
+      rightMicSrc   = ctx.createMediaStreamSource(rightStream);
+      rightSilencer = ctx.createGain(); rightSilencer.gain.value = 0;
+
+      if (useWorklet) {
+        rightWorkletNode = new AudioWorkletNode(ctx, 'recorder-processor');
+        rightWorkletNode.port.onmessage = ({ data }) => {
+          if (!rightIsRecording) return;
+          if (data.first) rightRecordStartCtxTime = data.time;
+          rightPCMChunks.push(new Float32Array(data.buf));
+        };
+        rightMicSrc.connect(rightWorkletNode);
+        rightWorkletNode.connect(rightSilencer);
+        rightWorkletNode.port.postMessage('start');
+      } else {
+        rightProcessor = ctx.createScriptProcessor(4096, 1, 1);
+        rightProcessor.onaudioprocess = e => {
+          if (!rightIsRecording) return;
+          if (rightRecordStartCtxTime === 0) rightRecordStartCtxTime = e.playbackTime;
+          rightPCMChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+        rightMicSrc.connect(rightProcessor);
+        rightProcessor.connect(rightSilencer);
+      }
+      rightSilencer.connect(ctx.destination);
+
+      rightIsRecording = true;
+      btnRecordR.textContent = 'Stop'; btnRecordR.classList.add('recording');
+      dotR.classList.add('visible'); setRightStatus('Recording…');
+    }
+
+    function stopRightRecording() {
+      rightIsRecording = false;
+      if (rightWorkletNode) { rightWorkletNode.port.postMessage('stop'); rightWorkletNode.disconnect(); }
+      if (rightProcessor)  { rightProcessor.disconnect(); rightProcessor.onaudioprocess = null; }
+      if (rightMicSrc)   rightMicSrc.disconnect();
+      if (rightSilencer) rightSilencer.disconnect();
+      rightStream.getTracks().forEach(t => t.stop());
+      rightWorkletNode = null; rightProcessor = null; rightMicSrc = null; rightSilencer = null;
+      btnRecordR.textContent = 'Record'; btnRecordR.classList.remove('recording');
+      dotR.classList.remove('visible'); setRightStatus('Processing…');
+      onRightRecordingStop();
+    }
+
+    function onRightRecordingStop() {
+      const ctx = getAudioCtx();
+
+      // Assemble PCM chunks into a single AudioBuffer
+      const totalSamples = rightPCMChunks.reduce((s, c) => s + c.length, 0);
+      if (totalSamples === 0) { setRightStatus('No audio captured.'); return; }
+      const pcm = new Float32Array(totalSamples);
+      let off = 0;
+      for (const chunk of rightPCMChunks) { pcm.set(chunk, off); off += chunk.length; }
+      rightPCMChunks = [];
+
+      const rawBuf = ctx.createBuffer(1, totalSamples, ctx.sampleRate);
+      rawBuf.getChannelData(0).set(pcm);
+
+      rightRawBuffer      = rawBuf;
+      rightActualDuration = rawBuf.duration;
+
+      const T_L = (loopEnd - loopStart) * audioBuffer.duration;
+      const N   = Math.max(1, Math.ceil(rightActualDuration / T_L));
+      rightPaddedDuration = N * T_L;
+
+      // e.playbackTime is the AudioContext *output* processing time.
+      // Mic samples in that block were captured earlier by two separate latencies:
+      //   outputLat  — how far left's scheduled audio lags its acoustic output
+      //   inputLat   — how far real-world audio lags before it arrives in the AudioWorklet input buffer
+      // The browser reports inputLat directly on the track settings.
+      const outputLat = ctx.outputLatency || 0;
+      const inputLat  = rightStream?.getAudioTracks()[0]?.getSettings()?.latency || 0;
+      const autoLat   = outputLat + inputLat;
+      const totalLat  = calibratedLatency > 0 ? calibratedLatency : autoLat;
+      leftPhaseOffset = ((rightRecordStartCtxTime - totalLat - playStart) % T_L + T_L) % T_L;
+
+      // Build padded AudioBuffer (zero-padded to N * T_L)
+      const nSamples = Math.ceil(rightPaddedDuration * ctx.sampleRate);
+      rightAudioBuffer = ctx.createBuffer(1, nSamples, ctx.sampleRate);
+      rightAudioBuffer.getChannelData(0).set(pcm);
+
+      wfContainerR.classList.add('visible');
+      requestAnimationFrame(() => drawRightWaveform());
+      btnResetR.classList.add('visible');
+      durationR.textContent = rightActualDuration.toFixed(2) + 's';
+
+      if (isPlaying) {
+        stopRightPlay();
+        // Schedule right from position 0 at the next occurrence of leftPhaseOffset
+        // in the left loop, so the playhead always starts from the left edge.
+        const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+        const now = ctx.currentTime;
+        const currentPhase = (now - playStart) % T_L;
+        let waitTime = (effectivePhase - currentPhase + T_L) % T_L;
+        if (waitTime < 0.05) waitTime += T_L;
+        startRightPlay(now + waitTime, 0);
+        setRightStatus('Playing (synced).');
+      } else {
+        setRightStatus('Ready. Press Play to start both.');
+      }
+      updateRightRecordBtn();
+    }
+
+    // ── Waveform drawing ──────────────────────────────────────────────────────
+    function drawWaveform() {
+      if (!audioBuffer) return;
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = wfContainer.getBoundingClientRect();
+      waveCanvas.width  = rect.width  * dpr;
+      waveCanvas.height = rect.height * dpr;
+      const ctx  = waveCanvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const data = audioBuffer.getChannelData(0);
+      const w = rect.width, h = rect.height, mid = h/2;
+      const step = Math.max(1, Math.floor(data.length / w));
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = '#e5e5e5'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+      const glin = dbToLinear(inputGainDb);
+      for (let i = 0; i < w; i++) {
+        let mn = 0, mx = 0;
+        for (let j = 0; j < step; j++) { const s = data[i*step+j]||0; if(s<mn)mn=s; if(s>mx)mx=s; }
+        mn = Math.max(-1, mn*glin); mx = Math.min(1, mx*glin);
+        const amp = Math.max(Math.abs(mn), Math.abs(mx));
+        ctx.fillStyle = `rgba(217,119,6,${0.25 + amp*0.75})`;
+        ctx.fillRect(i, mid + mn*mid, 1, Math.max(1, (mx-mn)*mid));
+      }
+    }
+
+    function drawRightWaveform() {
+      if (!rightRawBuffer) return;
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = wfContainerR.getBoundingClientRect();
+      waveCanvasR.width  = rect.width  * dpr;
+      waveCanvasR.height = rect.height * dpr;
+      const ctx  = waveCanvasR.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const sampleRate = rightRawBuffer.sampleRate;
+      const rawSamples = Math.floor(rightActualDuration * sampleRate);
+      const data = rightRawBuffer.getChannelData(0);
+      const w = rect.width, h = rect.height, mid = h/2;
+      const step = Math.max(1, Math.floor(rawSamples / w));
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = '#e5e5e5'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+      const glin = dbToLinear(rightInputGainDb);
+      for (let i = 0; i < w; i++) {
+        let mn = 0, mx = 0;
+        for (let j = 0; j < step; j++) { const s = data[i*step+j]||0; if(s<mn)mn=s; if(s>mx)mx=s; }
+        mn = Math.max(-1, mn*glin); mx = Math.min(1, mx*glin);
+        const amp = Math.max(Math.abs(mn), Math.abs(mx));
+        ctx.fillStyle = `rgba(99,102,241,${0.25 + amp*0.75})`;
+        ctx.fillRect(i, mid + mn*mid, 1, Math.max(1, (mx-mn)*mid));
+      }
+    }
+
+    // ── Loop region ───────────────────────────────────────────────────────────
+    handleLeft.addEventListener('mousedown',  e => { waveDrag = 'left';  e.preventDefault(); });
+    handleRight.addEventListener('mousedown', e => { waveDrag = 'right'; e.preventDefault(); });
+
+    function updateRegion() {
+      handleLeft.style.left  = loopStart * 100 + '%';
+      handleRight.style.left = loopEnd   * 100 + '%';
+      dimLeft.style.width    = loopStart * 100 + '%';
+      dimRight.style.width   = (1 - loopEnd) * 100 + '%';
+      if (sourceNode && isPlaying) {
+        sourceNode.loopStart = loopStart * audioBuffer.duration;
+        sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
+      }
+    }
+
+    function showHandles() {
+      loopStart = 0; loopEnd = 1;
+      handleLeft.classList.add('visible'); handleRight.classList.add('visible');
+      updateRegion();
+    }
+
+    // ── Buttons ───────────────────────────────────────────────────────────────
+    btnPlay.addEventListener('click', togglePlay);
+
+    btnReset.addEventListener('click', () => {
+      stopPlay();
+      audioBuffer = null; chunks = [];
+      wfContainer.classList.remove('visible');
+      btnPlay.classList.remove('visible'); btnReset.classList.remove('visible');
+      handleLeft.classList.remove('visible'); handleRight.classList.remove('visible');
+      durationEl.textContent = '';
+      setStatus('Press record to capture a DI sample.');
+      updateRightRecordBtn();
+    });
+
+    btnResetR.addEventListener('click', () => {
+      stopRightPlay();
+      rightRawBuffer = null; rightAudioBuffer = null;
+      rightActualDuration = 0; rightPaddedDuration = 0;
+      leftPhaseOffset = 0; rightRecordStartCtxTime = 0;
+      rightPCMChunks = [];
+      wfContainerR.classList.remove('visible');
+      playheadR.classList.remove('active');
+      btnResetR.classList.remove('visible');
+      durationR.textContent = '';
+      setRightStatus('');
+      updateRightRecordBtn();
+    });
+
+    function updateRightRecordBtn() {
+      btnRecordR.disabled = !(audioBuffer && isPlaying);
+    }
+
+    // ── Calibration ───────────────────────────────────────────────────────────
+    function playCalClick(whenCtxTime) {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 1200;
+      env.gain.setValueAtTime(0.5, whenCtxTime);
+      env.gain.exponentialRampToValueAtTime(0.001, whenCtxTime + 0.06);
+      osc.connect(env); env.connect(ctx.destination);
+      osc.start(whenCtxTime); osc.stop(whenCtxTime + 0.08);
+    }
+
+    function animateCalCanvas() {
+      if (!calIsRunning) return;
+      const actx = getAudioCtx();
+      const now = actx.currentTime;
+
+      const dpr = window.devicePixelRatio || 1;
+      const rect = calCanvas.getBoundingClientRect();
+      const pw = Math.round(rect.width * dpr), ph = Math.round(rect.height * dpr);
+      if (calCanvas.width !== pw || calCanvas.height !== ph) {
+        calCanvas.width = pw; calCanvas.height = ph;
+      }
+      const c = calCanvas.getContext('2d');
+      c.save(); c.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+      c.clearRect(0, 0, w, h);
+      c.fillStyle = '#f8f8f8'; c.fillRect(0, 0, w, h);
+
+      const elapsed = now - calFirstBeatAt;
+
+      if (elapsed >= -0.5) {
+        const beatIdx = Math.max(0, Math.floor(elapsed / CAL_BEAT_INTERVAL));
+        const beatPhase = elapsed < 0 ? 0 : (elapsed / CAL_BEAT_INTERVAL) % 1;
+        const isCountIn = beatIdx < CAL_COUNT_IN;
+        const measBeat = beatIdx - CAL_COUNT_IN;
+
+        const PAD = 14;
+        const trackY = h * 0.6;
+        const markerX = w - PAD;
+        const ballX = PAD + Math.min(beatPhase, 0.999) * (w - 2 * PAD);
+
+        // Track
+        c.beginPath(); c.moveTo(PAD, trackY); c.lineTo(w - PAD, trackY);
+        c.strokeStyle = '#e5e5e5'; c.lineWidth = 1; c.stroke();
+
+        // Marker line at right
+        c.beginPath(); c.moveTo(markerX, 6); c.lineTo(markerX, h - 6);
+        c.strokeStyle = isCountIn ? '#ddd' : '#a5b4fc';
+        c.lineWidth = 2.5; c.stroke();
+
+        // Ball
+        const nearMarker = beatPhase > 0.88;
+        let ballColor;
+        if (isCountIn) {
+          ballColor = nearMarker ? '#aaa' : '#ccc';
+        } else {
+          ballColor = nearMarker ? '#4f46e5' : '#818cf8';
+        }
+        c.beginPath(); c.arc(ballX, trackY, 7, 0, Math.PI * 2);
+        c.fillStyle = ballColor; c.fill();
+
+        // Beat label
+        c.textAlign = 'center'; c.textBaseline = 'top';
+        c.font = '9px SF Mono, monospace';
+        if (isCountIn) {
+          c.fillStyle = '#ccc';
+          c.fillText(`count-in ${beatIdx + 1} / ${CAL_COUNT_IN}`, w / 2, 3);
+        } else if (measBeat >= 0) {
+          c.fillStyle = '#818cf8';
+          c.fillText(`beat ${measBeat + 1}`, w / 2, 3);
+        }
+      }
+
+      c.restore();
+      calAnimFrame = requestAnimationFrame(animateCalCanvas);
+    }
+
+    function cancelCalibration() {
+      calIsRunning = false;
+      if (calNextBeatTimeout) { clearTimeout(calNextBeatTimeout); calNextBeatTimeout = null; }
+      cancelAnimationFrame(calAnimFrame);
+      if (calWorkletNode) { try { calWorkletNode.port.postMessage('stop'); calWorkletNode.disconnect(); } catch {} }
+      if (calProcessor)  { try { calProcessor.disconnect(); calProcessor.onaudioprocess = null; } catch {} }
+      if (calMicSrc)   { try { calMicSrc.disconnect(); } catch {} }
+      if (calSilencer) { try { calSilencer.disconnect(); } catch {} }
+      if (calStream) calStream.getTracks().forEach(t => t.stop());
+      calWorkletNode = null; calProcessor = null; calMicSrc = null; calSilencer = null; calStream = null;
+      calPCMChunks = []; calMeasLatencies = [];
+      const ms = Math.round(calibratedLatency * 1000);
+      btnCal.textContent = calibratedLatency > 0 ? `Calibrate (${ms}ms)` : 'Calibrate';
+      btnCal.classList.remove('recording');
+      calStripEl.classList.remove('visible');
+    }
+
+    function finishCalibration() {
+      const wasRunning = calIsRunning;
+      calIsRunning = false;
+      if (calNextBeatTimeout) { clearTimeout(calNextBeatTimeout); calNextBeatTimeout = null; }
+      cancelAnimationFrame(calAnimFrame);
+
+      if (calWorkletNode) { try { calWorkletNode.port.postMessage('stop'); calWorkletNode.disconnect(); } catch {} }
+      if (calProcessor)  { try { calProcessor.disconnect(); calProcessor.onaudioprocess = null; } catch {} }
+      if (calMicSrc)   { try { calMicSrc.disconnect(); } catch {} }
+      if (calSilencer) { try { calSilencer.disconnect(); } catch {} }
+      if (calStream) calStream.getTracks().forEach(t => t.stop());
+      calWorkletNode = null; calProcessor = null; calMicSrc = null; calSilencer = null; calStream = null;
+
+      // Assemble PCM for diagram before clearing chunks
+      const diagTotal = calPCMChunks.reduce((s, ch) => s + ch.length, 0);
+      let diagPCM = null;
+      if (diagTotal > 0) {
+        diagPCM = new Float32Array(diagTotal);
+        let o = 0; for (const ch of calPCMChunks) { diagPCM.set(ch, o); o += ch.length; }
+      }
+      calPCMChunks = [];
+
+      if (!wasRunning) return;
+
+      btnCal.classList.remove('recording');
+      calStripEl.classList.remove('visible');
+
+      const raw = calMeasLatencies;
+      calMeasLatencies = [];
+
+      if (raw.length < 3) {
+        setRightStatus('Calibration failed: play louder or try again.');
+        btnCal.textContent = 'Calibrate'; return;
+      }
+
+      // Remove outliers beyond 1.5 std devs
+      const mean0 = raw.reduce((a, b) => a + b, 0) / raw.length;
+      const std0  = Math.sqrt(raw.map(v => (v - mean0) ** 2).reduce((a, b) => a + b, 0) / raw.length);
+      const clean = raw.filter(v => Math.abs(v - mean0) <= std0 * 1.5 + 0.001);
+
+      if (clean.length === 0) { setRightStatus('Calibration failed: inconsistent. Try again.'); btnCal.textContent = 'Calibrate'; return; }
+
+      calibratedLatency = clean.reduce((a, b) => a + b, 0) / clean.length;
+      const ms = Math.round(calibratedLatency * 1000);
+      btnCal.textContent = `Calibrate (${ms}ms)`;
+      setRightStatus(`Calibrated: ${ms}ms latency (${clean.length}/${raw.length} beats used).`);
+
+      if (diagPCM) {
+        calResultData = {
+          pcm: diagPCM,
+          sr: getAudioCtx().sampleRate,
+          recordStart: calRecordStartCtxTime,
+          clickTimes: [...calClickTimes],
+          latencies: raw,
+          calibrated: calibratedLatency
+        };
+        calResultCanvas.classList.add('visible');
+        requestAnimationFrame(drawCalResult);
+      }
+    }
+
+    async function runCalibration() {
+      if (calIsRunning) { cancelCalibration(); setRightStatus('Calibration cancelled.'); return; }
+      const ctx = getAudioCtx();
+
+      try {
+        calStream = await navigator.mediaDevices.getUserMedia({
+          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
+        });
+      } catch { setRightStatus('Mic access denied.'); return; }
+
+      const useWorklet = await ensureWorklet();
+      calPCMChunks = []; calRecordStartCtxTime = 0; calClickTimes = [];
+
+      calMicSrc   = ctx.createMediaStreamSource(calStream);
+      calSilencer = ctx.createGain(); calSilencer.gain.value = 0;
+
+      if (useWorklet) {
+        calWorkletNode = new AudioWorkletNode(ctx, 'recorder-processor');
+        calWorkletNode.port.onmessage = ({ data }) => {
+          if (!calIsRunning) return;
+          if (data.first) calRecordStartCtxTime = data.time;
+          calPCMChunks.push(new Float32Array(data.buf));
+        };
+        calMicSrc.connect(calWorkletNode);
+        calWorkletNode.connect(calSilencer);
+        calWorkletNode.port.postMessage('start');
+      } else {
+        calProcessor = ctx.createScriptProcessor(4096, 1, 1);
+        calProcessor.onaudioprocess = e => {
+          if (!calIsRunning) return;
+          if (calRecordStartCtxTime === 0) calRecordStartCtxTime = e.playbackTime;
+          calPCMChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+        calMicSrc.connect(calProcessor);
+        calProcessor.connect(calSilencer);
+      }
+      calSilencer.connect(ctx.destination);
+
+      calMeasLatencies = [];
+      calResultCanvas.classList.remove('visible');
+      calIsRunning = true;
+      btnCal.textContent = 'Cancel'; btnCal.classList.add('recording');
+      calStripEl.classList.add('visible');
+      calHint.textContent = '4 count-in beats, then play a note on each click';
+
+      const firstBeatAt = ctx.currentTime + 1.0;
+      calFirstBeatAt = firstBeatAt;
+
+      // Schedule only the count-in beats now; measurement beats are scheduled one at a time.
+      for (let i = 0; i < CAL_COUNT_IN; i++) {
+        playCalClick(firstBeatAt + i * CAL_BEAT_INTERVAL);
+      }
+
+      animateCalCanvas();
+
+      // First measurement beat fires immediately after count-in ends.
+      calNextBeatCtxTime = firstBeatAt + CAL_COUNT_IN * CAL_BEAT_INTERVAL;
+      const countInMs = (calNextBeatCtxTime - ctx.currentTime) * 1000;
+      calNextBeatTimeout = setTimeout(scheduleNextCalBeat, Math.max(0, countInMs));
+    }
+
+    function scheduleNextCalBeat() {
+      if (!calIsRunning) return;
+      const ctx = getAudioCtx();
+      const t = calNextBeatCtxTime;
+      playCalClick(t);
+      calClickTimes.push(t);
+      calNextBeatCtxTime += CAL_BEAT_INTERVAL;
+      // Process this beat's mic response 0.55s after it fires.
+      const delayMs = (t + 0.55 - ctx.currentTime) * 1000;
+      calNextBeatTimeout = setTimeout(processCalBeat, Math.max(0, delayMs));
+    }
+
+    function processCalBeat() {
+      if (!calIsRunning) return;
+      const ctx = getAudioCtx();
+      const sr = ctx.sampleRate;
+      const clickT = calClickTimes[calClickTimes.length - 1];
+
+      // Assemble all PCM captured so far and find peak for this beat.
+      const totalSamples = calPCMChunks.reduce((s, c) => s + c.length, 0);
+      if (totalSamples > 0 && calRecordStartCtxTime > 0) {
+        const pcm = new Float32Array(totalSamples);
+        let o = 0;
+        for (const chunk of calPCMChunks) { pcm.set(chunk, o); o += chunk.length; }
+        const si = Math.max(0, Math.floor((clickT - 0.03 - calRecordStartCtxTime) * sr));
+        const ei = Math.min(pcm.length - 1, Math.floor((clickT + 0.45 - calRecordStartCtxTime) * sr));
+        let maxAmp = -1, peakIdx = si;
+        for (let i = si; i <= ei; i++) {
+          const a = Math.abs(pcm[i]); if (a > maxAmp) { maxAmp = a; peakIdx = i; }
+        }
+        if (maxAmp > 0.02) {
+          calMeasLatencies.push(calRecordStartCtxTime + peakIdx / sr - clickT);
+        }
+      }
+
+      const n = calMeasLatencies.length;
+      let converged = false;
+
+      if (n >= 1) {
+        const mean = calMeasLatencies.reduce((a, b) => a + b, 0) / n;
+        const ms   = Math.round(mean * 1000);
+        let semMs = null;
+        if (n >= 2) {
+          const variance = calMeasLatencies.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / (n - 1);
+          const sem = Math.sqrt(variance / n);
+          semMs = Math.round(sem * 1000);
+          if (n >= 3 && sem < CAL_SEM_TARGET) converged = true;
+        }
+        calHint.textContent = semMs !== null
+          ? `${ms}ms ±${semMs}ms | ${n} beat${n !== 1 ? 's' : ''}`
+          : `${ms}ms | 1 beat`;
+      }
+
+      if (converged || calClickTimes.length >= CAL_MAX_BEATS) {
+        finishCalibration();
+        return;
+      }
+
+      scheduleNextCalBeat();
+    }
+
+    function drawCalResult() {
+      if (!calResultData) return;
+      const { pcm, sr, recordStart, clickTimes, latencies, calibrated } = calResultData;
+
+      const dpr  = window.devicePixelRatio || 1;
+      const rect = calResultCanvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      calResultCanvas.width  = Math.round(rect.width  * dpr);
+      calResultCanvas.height = Math.round(rect.height * dpr);
+      const c = calResultCanvas.getContext('2d');
+      c.scale(dpr, dpr);
+      const w = rect.width, h = rect.height;
+
+      const PRE    = 0.05;   // 50 ms before click
+      const POST   = 0.55;   // 550 ms after click
+      const SPAN   = PRE + POST;
+      const TOP_H  = 13;     // label row at top
+      const BOT_H  = 14;     // time-axis row at bottom
+      const trackH = h - TOP_H - BOT_H;
+      const mid    = TOP_H + trackH / 2;
+      const amp    = (trackH / 2 - 3) * 0.9;
+      const xOf    = t => ((t + PRE) / SPAN) * w;
+
+      c.fillStyle = '#f8f8f8'; c.fillRect(0, 0, w, h);
+
+      // Find global max amplitude for scaling
+      let maxAmp = 0.01;
+      for (const clickT of clickTimes) {
+        const si = Math.max(0, Math.floor((clickT - PRE - recordStart) * sr));
+        const ei = Math.min(pcm.length - 1, Math.floor((clickT + POST - recordStart) * sr));
+        for (let i = si; i <= ei; i++) { const a = Math.abs(pcm[i]); if (a > maxAmp) maxAmp = a; }
+      }
+
+      // Overlaid waveform traces, one per beat
+      for (const clickT of clickTimes) {
+        const si = Math.max(0, Math.floor((clickT - PRE - recordStart) * sr));
+        const ei = Math.min(pcm.length - 1, Math.floor((clickT + POST - recordStart) * sr));
+        if (ei <= si) continue;
+        const span = ei - si;
+        c.beginPath();
+        for (let px = 0; px <= w; px++) {
+          const idx = Math.max(si, Math.min(ei, si + Math.floor((px / w) * span)));
+          const y = mid - (pcm[idx] / maxAmp) * amp;
+          px === 0 ? c.moveTo(px, y) : c.lineTo(px, y);
+        }
+        c.strokeStyle = 'rgba(99,102,241,0.15)'; c.lineWidth = 1; c.stroke();
+      }
+
+      // Zero line
+      c.beginPath(); c.moveTo(0, mid); c.lineTo(w, mid);
+      c.strokeStyle = '#e5e5e5'; c.lineWidth = 1; c.stroke();
+
+      // Click marker (dashed amber)
+      const clickX = xOf(0);
+      c.beginPath(); c.moveTo(clickX, TOP_H); c.lineTo(clickX, h - BOT_H);
+      c.strokeStyle = '#f59e0b'; c.lineWidth = 1.5;
+      c.setLineDash([3, 3]); c.stroke(); c.setLineDash([]);
+
+      // Individual peak dots
+      for (const lat of latencies) {
+        c.beginPath(); c.arc(xOf(lat), mid, 2.5, 0, Math.PI * 2);
+        c.fillStyle = 'rgba(99,102,241,0.35)'; c.fill();
+      }
+
+      // Calibrated reference line (dim dashed) — shown only when trim is active
+      const calX = xOf(calibrated);
+      const adjX = xOf(calibrated + rightSyncTrimSec);
+      const trimmed = Math.abs(rightSyncTrimSec) > 0.0005;
+      if (trimmed) {
+        c.beginPath(); c.moveTo(calX, TOP_H); c.lineTo(calX, h - BOT_H);
+        c.strokeStyle = 'rgba(99,102,241,0.3)'; c.lineWidth = 1;
+        c.setLineDash([4, 4]); c.stroke(); c.setLineDash([]);
+      }
+
+      // Adjusted line (solid, draggable)
+      c.beginPath(); c.moveTo(adjX, TOP_H); c.lineTo(adjX, h - BOT_H);
+      c.strokeStyle = '#4f46e5'; c.lineWidth = 2; c.stroke();
+
+      // Drag handle — small circle on the adjusted line
+      c.beginPath(); c.arc(adjX, mid, 5, 0, Math.PI * 2);
+      c.fillStyle = '#4f46e5'; c.fill();
+      c.beginPath(); c.arc(adjX, mid, 3, 0, Math.PI * 2);
+      c.fillStyle = '#f8f8f8'; c.fill();
+
+      // Top labels
+      c.font = '9px SF Mono, monospace'; c.textBaseline = 'top';
+      c.fillStyle = '#f59e0b'; c.textAlign = 'center';
+      c.fillText('click', clickX, 2);
+
+      if (trimmed) {
+        // Show both the calibrated value (dim) and the adjusted value
+        c.fillStyle = 'rgba(99,102,241,0.45)';
+        c.textAlign = calX > w - 44 ? 'right' : 'left';
+        c.fillText(`${Math.round(calibrated * 1000)}ms`, calX + (calX > w - 44 ? -3 : 3), 2);
+        c.fillStyle = '#4f46e5';
+        c.textAlign = adjX > w - 44 ? 'right' : 'left';
+        c.fillText(`${Math.round((calibrated + rightSyncTrimSec) * 1000)}ms`, adjX + (adjX > w - 44 ? -3 : 3), 2);
+      } else {
+        c.fillStyle = '#4f46e5';
+        c.textAlign = adjX > w - 44 ? 'right' : 'left';
+        c.fillText(`${Math.round(calibrated * 1000)}ms`, adjX + (adjX > w - 44 ? -3 : 3), 2);
+      }
+
+      // Time axis ticks and labels
+      c.textBaseline = 'bottom'; c.textAlign = 'center'; c.fillStyle = '#ccc';
+      for (const ms of [0, 100, 200, 300, 400, 500]) {
+        const tx = xOf(ms / 1000);
+        if (tx < 8 || tx > w - 8) continue;
+        c.fillText(ms === 0 ? '0' : `${ms}ms`, tx, h);
+        c.beginPath(); c.moveTo(tx, h - BOT_H); c.lineTo(tx, h - BOT_H + 3);
+        c.strokeStyle = '#ddd'; c.lineWidth = 1; c.stroke();
+      }
+    }
+
+    btnCal.addEventListener('click', () => {
+      runCalibration().catch(e => { setRightStatus('Error: ' + e.message); console.error(e); });
+    });
+
+    // ── Sync trim ─────────────────────────────────────────────────────────────
+    function updateTrimLabel() {
+      const ms = Math.round(rightSyncTrimSec * 1000);
+      syncTrimLabel.textContent = ms === 0 ? '' : (ms > 0 ? '+' : '') + ms + 'ms';
+      if (Math.abs(rightSyncTrimSec) > 0.0005) {
+        btnCalReset.classList.add('visible');
+      } else {
+        btnCalReset.classList.remove('visible');
+      }
+    }
+
+    function setTrim(newSec) {
+      rightSyncTrimSec = Math.max(-0.3, Math.min(0.3, newSec));
+      updateTrimLabel();
+      if (calResultData) drawCalResult();
+    }
+
+    function applyTrimResync() {
+      if (rightSourceNode && isPlaying && rightAudioBuffer) {
+        stopRightPlay();
+        const ctx = getAudioCtx();
+        const T_L = (loopEnd - loopStart) * audioBuffer.duration;
+        const effectivePhase = ((leftPhaseOffset - rightSyncTrimSec) % T_L + T_L) % T_L;
+        const scheduleAt = ctx.currentTime + 0.05;
+        const pos = scheduleAt - playStart - effectivePhase;
+        const startOff = ((pos % rightPaddedDuration) + rightPaddedDuration) % rightPaddedDuration;
+        startRightPlay(scheduleAt, startOff);
+      }
+    }
+
+    // ── Cal result diagram drag ───────────────────────────────────────────────
+    const CAL_PRE = 0.05, CAL_SPAN = 0.6;
+
+    calResultCanvas.addEventListener('mousedown', e => {
+      if (!calResultData) return;
+      const rect = calResultCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const lineX = ((calResultData.calibrated + rightSyncTrimSec + CAL_PRE) / CAL_SPAN) * rect.width;
+      if (Math.abs(x - lineX) <= 8) {
+        calDragging = true;
+        calDragStartX = e.clientX;
+        calDragStartTrim = rightSyncTrimSec;
+        e.preventDefault();
+      }
+    });
+
+    calResultCanvas.addEventListener('mousemove', e => {
+      if (!calResultData) return;
+      const rect = calResultCanvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      if (calDragging) {
+        const delta = (e.clientX - calDragStartX) / rect.width * CAL_SPAN;
+        setTrim(calDragStartTrim + delta);
+      } else {
+        const lineX = ((calResultData.calibrated + rightSyncTrimSec + CAL_PRE) / CAL_SPAN) * rect.width;
+        calResultCanvas.style.cursor = Math.abs(x - lineX) <= 8 ? 'ew-resize' : 'default';
+      }
+    });
+
+    document.addEventListener('mouseup', e => {
+      if (calDragging) {
+        calDragging = false;
+        calResultCanvas.style.cursor = 'default';
+        applyTrimResync();
+      }
+    });
+
+    btnCalReset.addEventListener('click', () => {
+      setTrim(0);
+      applyTrimResync();
+    });
+
+    // ── Session save / load ───────────────────────────────────────────────────
+
+    // Legacy JSON helpers (used for loading old .json sessions)
+    function decBuf(enc) {
+      if (!enc) return null;
+      const ctx = getAudioCtx();
+      const buf = ctx.createBuffer(enc.ch.length, enc.n, enc.sr);
+      enc.ch.forEach((b64, c) => {
+        const bin = atob(b64), u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        buf.getChannelData(c).set(new Float32Array(u.buffer));
+      });
+      return buf;
+    }
+    function decF32(b64) {
+      if (!b64) return null;
+      const bin = atob(b64), u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return new Float32Array(u.buffer);
+    }
+
+    // Zip helpers: encode AudioBuffers to MP3 for compact storage
+    function _f32ToI16(f32) {
+      const i16 = new Int16Array(f32.length);
+      for (let i = 0; i < f32.length; i++)
+        i16[i] = Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0));
+      return i16;
+    }
+    async function bufToMp3(buf, bitrate = 320) {
+      const nCh = Math.min(buf.numberOfChannels, 2);
+      const enc = new lamejs.Mp3Encoder(nCh, buf.sampleRate, bitrate);
+      const L = _f32ToI16(buf.getChannelData(0));
+      const R = nCh > 1 ? _f32ToI16(buf.getChannelData(1)) : null;
+      const CHUNK = 1152;
+      const parts = [];
+      for (let i = 0; i < L.length; i += CHUNK) {
+        const l = L.subarray(i, i + CHUNK);
+        const out = R ? enc.encodeBuffer(l, R.subarray(i, i + CHUNK)) : enc.encodeBuffer(l);
+        if (out.length) parts.push(out);
+      }
+      const tail = enc.flush();
+      if (tail.length) parts.push(tail);
+      const total = parts.reduce((s, p) => s + p.length, 0);
+      const mp3 = new Uint8Array(total);
+      let off = 0;
+      for (const p of parts) { mp3.set(p, off); off += p.length; }
+      return mp3;
+    }
+    async function bufToZip(zip, prefix, buf, bitrate = 320, fmt = 'mp3') {
+      if (!buf) return null;
+      if (fmt === 'f32') {
+        for (let c = 0; c < buf.numberOfChannels; c++)
+          zip.file(`${prefix}_ch${c}.f32`, buf.getChannelData(c).buffer.slice(0));
+        return { prefix, fmt: 'f32', n: buf.length, sr: buf.sampleRate, channels: buf.numberOfChannels };
+      }
+      const mp3 = await bufToMp3(buf, bitrate);
+      zip.file(`${prefix}.mp3`, mp3);
+      // Store original length so we can strip encoder delay on decode
+      return { prefix, fmt: 'mp3', n: buf.length, sr: buf.sampleRate };
+    }
+    async function bufFromZip(zip, desc) {
+      if (!desc) return null;
+      if (desc.fmt === 'mp3') {
+        const ab = await zip.file(`${desc.prefix}.mp3`).async('arraybuffer');
+        const decoded = await new Promise((res, rej) => getAudioCtx().decodeAudioData(ab, res, rej));
+        // At low bitrates LAME resamples internally, so decoded.sampleRate may differ.
+        const LAME_DELAY = 576;
+        const n_enc = Math.round(desc.n * decoded.sampleRate / desc.sr);
+        const skip = decoded.length >= n_enc + LAME_DELAY ? LAME_DELAY : 0;
+        const actual_n = Math.min(n_enc, decoded.length - skip);
+        const ctx = getAudioCtx();
+        const out = ctx.createBuffer(decoded.numberOfChannels, actual_n, decoded.sampleRate);
+        for (let c = 0; c < decoded.numberOfChannels; c++)
+          out.getChannelData(c).set(decoded.getChannelData(c).subarray(skip, skip + actual_n));
+        return out;
+      }
+      // fmt: 'f32' or legacy (no fmt field)
+      const ctx = getAudioCtx();
+      const buf = ctx.createBuffer(desc.channels, desc.n, desc.sr);
+      for (let c = 0; c < desc.channels; c++) {
+        const ab = await zip.file(`${desc.prefix}_ch${c}.f32`).async('arraybuffer');
+        buf.getChannelData(c).set(new Float32Array(ab));
+      }
+      return buf;
+    }
+    function f32ToZip(zip, name, f32) {
+      if (!f32) return false;
+      zip.file(name, f32.buffer.slice(0));
+      return true;
+    }
+    async function f32FromZip(zip, name) {
+      const entry = zip.file(name);
+      if (!entry) return null;
+      return new Float32Array(await entry.async('arraybuffer'));
+    }
+
+    async function saveSession() {
+      // Open picker first — browser drops the user-gesture token after any await
+      let handle;
+      try {
+        handle = await window.showSaveFilePicker({
+          suggestedName: 'ir-session.irz',
+          types: [{ description: 'IR Session', accept: { 'application/zip': ['.irz'] } }],
+        });
+      } catch (e) {
+        if (e.name !== 'AbortError') setStatus('Save failed: ' + e.message);
+        return;
+      }
+
+      try {
+        const zip = new JSZip();
+        const meta = {
+          version: 2,
+          loopStart, loopEnd,
+          blendPt, rightBlendPt,
+          reverbMix, inputGainDb, irBypassed,
+          eqLowDb, eqMidDb, eqHighDb,
+          rightReverbMix, rightInputGainDb, rightIrBypassed,
+          rightEqLowDb, rightEqMidDb, rightEqHighDb,
+          calibratedLatency, rightSyncTrimSec,
+          sessionNotes,
+          leftPhaseOffset, rightActualDuration, rightPaddedDuration,
+        };
+        setStatus('Encoding audio…');
+        meta.audioBuffer    = await bufToZip(zip, 'audio_left',  audioBuffer);
+        meta.rightRawBuffer = await bufToZip(zip, 'audio_right', rightRawBuffer);
+        meta.irSlots = await Promise.all(irSlots.map(async (x, i) => ({
+          name: x.name, normGainDb: x.normGainDb ?? 0,
+          buf: await bufToZip(zip, `ir_left_${i}`, x.buffer, 320, 'f32'),
+        })));
+        meta.rightIrSlots = await Promise.all(rightIrSlots.map(async (x, i) => ({
+          name: x.name, normGainDb: x.normGainDb ?? 0,
+          buf: await bufToZip(zip, `ir_right_${i}`, x.buffer, 320, 'f32'),
+        })));
+        if (calResultData) {
+          // Downsample PCM to display-only resolution — no MP3 encoder delay to worry about
+          const CAL_PCM_SR = 4000;
+          const ratio = calResultData.sr / CAL_PCM_SR;
+          const nDown = Math.floor(calResultData.pcm.length / ratio);
+          const down = new Float32Array(nDown);
+          for (let i = 0; i < nDown; i++) down[i] = calResultData.pcm[Math.floor(i * ratio)];
+          zip.file('cal_pcm.f32', down.buffer.slice(0));
+          meta.calResultData = {
+            pcmSr: CAL_PCM_SR,
+            recordStart: calResultData.recordStart,
+            clickTimes: calResultData.clickTimes, latencies: calResultData.latencies,
+            calibrated: calResultData.calibrated,
+          };
+        }
+        zip.file('session.json', JSON.stringify(meta));
+        setStatus('Compressing…');
+        const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        setStatus(`Saved ${handle.name}.`);
+      } catch (e) {
+        setStatus('Save failed: ' + e.message);
+      }
+    }
+
+    async function applySessionData(s, zip) {
+      stopPlay();
+
+      // Helper: resolve an AudioBuffer from either zip entry or legacy base64 descriptor
+      const loadBuf = async (desc) => zip ? bufFromZip(zip, desc) : decBuf(desc);
+
+      if (s.audioBuffer) {
+        audioBuffer = await loadBuf(s.audioBuffer);
+        loopStart = s.loopStart; loopEnd = s.loopEnd;
+        wfContainer.classList.add('visible');
+        requestAnimationFrame(() => drawWaveform());
+        handleLeft.classList.add('visible'); handleRight.classList.add('visible');
+        updateRegion();
+        btnPlay.classList.add('visible'); btnReset.classList.add('visible');
+        durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
+        setStatus('Loaded. Press Play to start.');
+      }
+
+      if (s.rightRawBuffer) {
+        stopRightPlay();
+        rightRawBuffer      = await loadBuf(s.rightRawBuffer);
+        rightActualDuration = s.rightActualDuration;
+        rightPaddedDuration = s.rightPaddedDuration;
+        leftPhaseOffset     = s.leftPhaseOffset;
+        const nSamp = Math.ceil(rightPaddedDuration * getAudioCtx().sampleRate);
+        rightAudioBuffer = getAudioCtx().createBuffer(1, nSamp, getAudioCtx().sampleRate);
+        rightAudioBuffer.getChannelData(0).set(
+          rightRawBuffer.getChannelData(0).subarray(0, Math.min(nSamp, rightRawBuffer.length))
+        );
+        wfContainerR.classList.add('visible');
+        requestAnimationFrame(() => drawRightWaveform());
+        btnResetR.classList.add('visible');
+        durationR.textContent = rightActualDuration.toFixed(2) + 's';
+        setRightStatus('Loaded.');
+      }
+
+      irSlots = await Promise.all(s.irSlots.map(async x => {
+        const buffer = await loadBuf(x.buf);
+        return { name: x.name, buffer, normGainDb: x.normGainDb ?? computeNormGainDb(buffer) };
+      }));
+      rightIrSlots = await Promise.all(s.rightIrSlots.map(async x => {
+        const buffer = await loadBuf(x.buf);
+        return { name: x.name, buffer, normGainDb: x.normGainDb ?? computeNormGainDb(buffer) };
+      }));
+      blendPt = s.blendPt;           drawPolygon();
+      rightBlendPt = s.rightBlendPt; drawRightPolygon();
+
+      reverbMix = s.reverbMix ?? 0; inputGainDb = s.inputGainDb ?? 0;
+      irBypassed = s.irBypassed ?? false;
+      eqLowDb = s.eqLowDb ?? 0; eqMidDb = s.eqMidDb ?? 0; eqHighDb = s.eqHighDb ?? 0;
+      rightReverbMix = s.rightReverbMix ?? 0; rightInputGainDb = s.rightInputGainDb ?? 0;
+      rightIrBypassed = s.rightIrBypassed ?? false;
+      rightEqLowDb = s.rightEqLowDb ?? 0; rightEqMidDb = s.rightEqMidDb ?? 0; rightEqHighDb = s.rightEqHighDb ?? 0;
+      calibratedLatency = s.calibratedLatency ?? 0; rightSyncTrimSec = s.rightSyncTrimSec ?? 0;
+      sessionNotes = s.sessionNotes ?? '';
+      sessionNotesEl.value = sessionNotes;
+
+      drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
+      drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
+      reverbLabel.textContent     = Math.round(reverbMix * 100) + '%';
+      inputGainLabel.textContent  = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
+      reverbLabelR.textContent    = Math.round(rightReverbMix * 100) + '%';
+      inputGainLabelR.textContent = (rightInputGainDb >= 0 ? '+' : '') + rightInputGainDb.toFixed(1) + ' dB';
+      btnBypass.classList.toggle('bypassed', irBypassed);
+      btnBypass.textContent = irBypassed ? 'Bypassed' : 'Bypass';
+      btnBypassR.classList.toggle('bypassed', rightIrBypassed);
+      btnBypassR.textContent = rightIrBypassed ? 'Bypassed' : 'Bypass';
+      if (calibratedLatency > 0) btnCal.textContent = `Calibrate (${Math.round(calibratedLatency * 1000)}ms)`;
+      updateTrimLabel(); updateRightRecordBtn();
+
+      if (s.calResultData) {
+        let pcm;
+        let effectiveSr = s.calResultData.sr ?? s.calResultData.pcmSr;
+        if (zip) {
+          if (s.calResultData.pcmSr) {
+            // New format: manually downsampled raw f32
+            pcm = await f32FromZip(zip, 'cal_pcm.f32');
+            effectiveSr = s.calResultData.pcmSr;
+          } else if (s.calResultData.calBufDesc) {
+            // Previous MP3 format (transitional)
+            const calBuf = await bufFromZip(zip, s.calResultData.calBufDesc);
+            pcm = new Float32Array(calBuf.getChannelData(0));
+            effectiveSr = calBuf.sampleRate;
+          } else {
+            pcm = await f32FromZip(zip, 'cal_pcm.f32'); // legacy raw f32 (v1 .irz)
+            effectiveSr = s.calResultData.sr;
+          }
+        } else {
+          pcm = decF32(s.calResultData.pcm); // legacy JSON
+        }
+        calResultData = {
+          pcm,
+          sr:          effectiveSr,
+          recordStart: s.calResultData.recordStart,
+          clickTimes:  s.calResultData.clickTimes,
+          latencies:   s.calResultData.latencies,
+          calibrated:  s.calResultData.calibrated,
+        };
+        calResultCanvas.classList.add('visible');
+        requestAnimationFrame(drawCalResult);
+      }
+    }
+
+    async function loadSession() {
+      let file;
+      try {
+        const [handle] = await window.showOpenFilePicker({
+          types: [{ description: 'IR Session', accept: { 'application/zip': ['.irz'], 'application/json': ['.json'] } }],
+        });
+        file = await handle.getFile();
+      } catch (e) {
+        if (e.name !== 'AbortError') setStatus('Load failed: ' + e.message);
+        return;
+      }
+      let s, zip;
+      if (file.name.endsWith('.json')) {
+        s = JSON.parse(await file.text());
+      } else {
+        setStatus('Loading…');
+        zip = await JSZip.loadAsync(await file.arrayBuffer());
+        s = JSON.parse(await zip.file('session.json').async('string'));
+      }
+      await applySessionData(s, zip);
+    }
+
+    async function loadDemoSession() {
+      try {
+        setStatus('Loading demo…');
+        const resp = await fetch('./ir-session-pr100.irz');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const zip = await JSZip.loadAsync(await resp.arrayBuffer());
+        const s = JSON.parse(await zip.file('session.json').async('string'));
+        await applySessionData(s, zip);
+      } catch (e) {
+        setStatus('Demo load failed: ' + e.message);
+      }
+    }
+
+    function clearSession() {
+      stopPlay();
+      stopRightPlay();
+
+      // Left
+      audioBuffer = null; chunks = [];
+      loopStart = 0; loopEnd = 1;
+      wfContainer.classList.remove('visible');
+      btnPlay.classList.remove('visible'); btnReset.classList.remove('visible');
+      handleLeft.classList.remove('visible'); handleRight.classList.remove('visible');
+      durationEl.textContent = '';
+      setStatus('Press record to capture a DI sample.');
+
+      // Right
+      rightRawBuffer = null; rightAudioBuffer = null;
+      rightActualDuration = 0; rightPaddedDuration = 0;
+      leftPhaseOffset = 0; rightRecordStartCtxTime = 0;
+      rightPCMChunks = [];
+      wfContainerR.classList.remove('visible');
+      playheadR.classList.remove('active');
+      btnResetR.classList.remove('visible');
+      durationR.textContent = '';
+      setRightStatus('');
+
+      // IR slots
+      irSlots = []; blendPt = { x: 0, y: 0 };
+      rightIrSlots = []; rightBlendPt = { x: 0, y: 0 };
+      irBypassed = false; rightIrBypassed = false;
+      btnBypass.classList.remove('bypassed'); btnBypass.textContent = 'Bypass';
+      btnBypassR.classList.remove('bypassed'); btnBypassR.textContent = 'Bypass';
+      drawPolygon(); drawRightPolygon();
+
+      // Knobs
+      reverbMix = 0; inputGainDb = 0;
+      rightReverbMix = 0; rightInputGainDb = 0;
+      eqLowDb = 0; eqMidDb = 0; eqHighDb = 0;
+      rightEqLowDb = 0; rightEqMidDb = 0; rightEqHighDb = 0;
+      if (eqLowNode)  { eqLowNode.gain.value  = 0; eqMidNode.gain.value  = 0; eqHighNode.gain.value  = 0; }
+      if (rightEqLowNode) { rightEqLowNode.gain.value = 0; rightEqMidNode.gain.value = 0; rightEqHighNode.gain.value = 0; }
+      drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
+      drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
+      reverbLabel.textContent = '0%'; inputGainLabel.textContent = '+0.0 dB';
+      reverbLabelR.textContent = '0%'; inputGainLabelR.textContent = '+0.0 dB';
+
+      // Notes
+      sessionNotes = ''; sessionNotesEl.value = '';
+
+      // Calibration
+      calibratedLatency = 0; rightSyncTrimSec = 0;
+      calResultData = null;
+      calResultCanvas.classList.remove('visible');
+      btnCal.textContent = 'Calibrate';
+      updateTrimLabel(); updateRightRecordBtn();
+    }
+
+    sessionNotesEl.addEventListener('input', () => { sessionNotes = sessionNotesEl.value; });
+
+    btnSave.addEventListener('click', () =>
+      saveSession().catch(e => setStatus('Save error: ' + e.message))
+    );
+    btnLoad.addEventListener('click', () =>
+      loadSession().catch(e => setStatus('Load error: ' + e.message))
+    );
+    btnClear.addEventListener('click', clearSession);
+    btnDemo.addEventListener('click', loadDemoSession);
+
+    // ── Status ────────────────────────────────────────────────────────────────
+    function setStatus(msg)      { statusText.textContent  = msg; }
+    function setRightStatus(msg) { statusTextR.textContent = msg; }
+
+    // ── Resize ────────────────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      if (audioBuffer) drawWaveform();
+      if (rightRawBuffer) drawRightWaveform();
+      if (calResultData) drawCalResult();
+      drawPolygon(); drawRightPolygon();
+    });
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+    drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
+    drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
+    loadDemoSession();
+  </script>
+</body>
+</html>
