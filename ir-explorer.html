@@ -2720,13 +2720,14 @@ registerProcessor('recorder-processor', RecorderProcessor);
     async function decBuf(enc) {
       if (!enc) return null;
       const ctx = getAudioCtx();
-      const buf = ctx.createBuffer(enc.ch.length, enc.n, enc.sr);
+      const targetN = Math.round(enc.n * ctx.sampleRate / enc.sr);
+      const buf = ctx.createBuffer(enc.ch.length, targetN, ctx.sampleRate);
       enc.ch.forEach((b64, c) => {
         const bin = atob(b64), u = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-        buf.getChannelData(c).set(new Float32Array(u.buffer));
+        buf.getChannelData(c).set(jsResample(new Float32Array(u.buffer), enc.sr, ctx.sampleRate));
       });
-      return resampleBuffer(ctx, buf);
+      return buf;
     }
     function decF32(b64) {
       if (!b64) return null;
@@ -2774,18 +2775,20 @@ registerProcessor('recorder-processor', RecorderProcessor);
       // Store original length so we can strip encoder delay on decode
       return { prefix, fmt: 'mp3', n: buf.length, sr: buf.sampleRate };
     }
-    // Resample buffer to match ctx.sampleRate — needed on iOS Safari where the
-    // AudioContext may run at 48000 Hz even when saved buffers are at 44100 Hz.
-    async function resampleBuffer(ctx, buf) {
-      if (buf.sampleRate === ctx.sampleRate) return buf;
-      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-      const length = Math.round(buf.length * ctx.sampleRate / buf.sampleRate);
-      const off = new OfflineCtx(buf.numberOfChannels, length, ctx.sampleRate);
-      const src = off.createBufferSource();
-      src.buffer = buf;
-      src.connect(off.destination);
-      src.start(0);
-      return off.startRendering();
+    // Pure-JS linear interpolation resampler — avoids any Web Audio API sample-rate
+    // restriction (iOS Safari throws on ConvolverNode.buffer when rates differ).
+    function jsResample(input, inRate, outRate) {
+      if (inRate === outRate) return input;
+      const ratio = inRate / outRate;
+      const n = Math.round(input.length / ratio);
+      const out = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const s = i * ratio;
+        const lo = s | 0;
+        const hi = Math.min(lo + 1, input.length - 1);
+        out[i] = input[lo] + (input[hi] - input[lo]) * (s - lo);
+      }
+      return out;
     }
 
     async function bufFromZip(zip, desc) {
@@ -2799,18 +2802,23 @@ registerProcessor('recorder-processor', RecorderProcessor);
         const n_enc = Math.round(desc.n * decoded.sampleRate / desc.sr);
         const skip = decoded.length >= n_enc + LAME_DELAY ? LAME_DELAY : 0;
         const actual_n = Math.min(n_enc, decoded.length - skip);
-        const out = ctx.createBuffer(decoded.numberOfChannels, actual_n, decoded.sampleRate);
-        for (let c = 0; c < decoded.numberOfChannels; c++)
-          out.getChannelData(c).set(decoded.getChannelData(c).subarray(skip, skip + actual_n));
-        return resampleBuffer(ctx, out);
+        // Always create output buffer at ctx.sampleRate to avoid iOS ConvolverNode mismatch.
+        const targetN = Math.round(actual_n * ctx.sampleRate / decoded.sampleRate);
+        const out = ctx.createBuffer(decoded.numberOfChannels, targetN, ctx.sampleRate);
+        for (let c = 0; c < decoded.numberOfChannels; c++) {
+          const slice = decoded.getChannelData(c).subarray(skip, skip + actual_n);
+          out.getChannelData(c).set(jsResample(slice, decoded.sampleRate, ctx.sampleRate));
+        }
+        return out;
       }
-      // fmt: 'f32' or legacy (no fmt field)
-      const buf = ctx.createBuffer(desc.channels, desc.n, desc.sr);
+      // fmt: 'f32' or legacy (no fmt field) — create directly at ctx.sampleRate
+      const targetN = Math.round(desc.n * ctx.sampleRate / desc.sr);
+      const out = ctx.createBuffer(desc.channels, targetN, ctx.sampleRate);
       for (let c = 0; c < desc.channels; c++) {
         const ab = await zip.file(`${desc.prefix}_ch${c}.f32`).async('arraybuffer');
-        buf.getChannelData(c).set(new Float32Array(ab));
+        out.getChannelData(c).set(jsResample(new Float32Array(ab), desc.sr, ctx.sampleRate));
       }
-      return resampleBuffer(ctx, buf);
+      return out;
     }
     function f32ToZip(zip, name, f32) {
       if (!f32) return false;
