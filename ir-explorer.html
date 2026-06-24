@@ -1812,10 +1812,16 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sourceNode.loopStart = loopStart * audioBuffer.duration;
       sourceNode.loopEnd   = loopEnd   * audioBuffer.duration;
 
-      // Diagnostic probe: wire sampleGainNode directly to destination at -30 dB.
-      // If you hear a very faint signal, the ConvolverNodes are the problem.
-      // If you hear nothing at all, the source itself isn't producing audio.
-      const probeGain = ctx.createGain(); probeGain.gain.value = 0.03;
+      // Diagnostic: play a 440 Hz beep for 1 second via oscillator.
+      // If you hear it, the AudioContext IS outputting to the speaker.
+      // If silent, ctx is running but not connected to audio hardware.
+      { const osc = ctx.createOscillator(); osc.frequency.value = 440;
+        const og = ctx.createGain(); og.gain.value = 0.4;
+        osc.connect(og); og.connect(ctx.destination);
+        osc.start(ctx.currentTime + 0.1); osc.stop(ctx.currentTime + 1.1); }
+
+      // Probe: sampleGainNode direct at -10 dB (audible even for quiet recordings)
+      const probeGain = ctx.createGain(); probeGain.gain.value = 0.3;
       sampleGainNode.connect(probeGain); probeGain.connect(ctx.destination);
 
       { const W = hasIR ? slotWeights(irSlots, blendPt) : [];
