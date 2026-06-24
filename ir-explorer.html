@@ -193,12 +193,13 @@
     button:disabled { opacity: 0.35; cursor: not-allowed; }
     button:disabled:active { transform: none; }
 
-    .btn-record { background: #f59e0b; color: #111; font-weight: 700; }
+    .btn-record { background: #f59e0b; color: #111; font-weight: 700; min-width: 7.5rem; }
     .btn-record:not(:disabled):hover { background: #fbbf24; }
     .btn-record.recording { background: #ef4444; color: #fff; }
     .btn-record.recording:hover { background: #f87171; }
+    #btnCal { min-width: 11rem; }
 
-    .btn-play { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; display: none; }
+    .btn-play { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; display: none; min-width: 6.5rem; justify-content: center; }
     .btn-play:hover { background: #e8e8e8; }
     .btn-play.visible { display: flex; align-items: center; gap: 0.5rem; }
 
@@ -358,7 +359,7 @@
     .btn-export-ir:hover { background: #dcfce7; }
     .btn-export-ir:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; }
+    .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; min-width: 6rem; }
     .btn-bypass:hover { background: #e8e8e8; }
     .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 
@@ -411,6 +412,10 @@
     .notes-body { display: flex; flex-direction: column; flex: 1; }
     .sidebar-notes { display: none; }
 
+    .build-no { font-size: 0.62rem; color: #bbb; letter-spacing: 0.08em; font-family: 'SF Mono', 'Fira Code', monospace; }
+    .build-no-mobile  { display: none; margin-left: 0.4rem; }
+    .build-no-desktop { display: block; margin-top: 0.5rem; text-align: left; }
+
     /* ── Mobile ──────────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
       body { flex-direction: column; align-items: stretch; }
@@ -446,6 +451,9 @@
         gap: 0.5rem;
       }
       .sidebar-notes.open { display: flex; height: 70vh; }
+
+      .build-no-desktop { display: none; }
+      .build-no-mobile  { display: inline; }
       .sidebar-notes .notes-textarea {
         width: 100%; min-height: 0; flex: 1;
         font-family: 'SF Mono', 'Fira Code', monospace;
@@ -464,7 +472,7 @@
 
   <div class="sidebar">
     <div class="sidebar-topbar">
-      <div class="sidebar-title">IR Explorer</div>
+      <div class="sidebar-title">IR Explorer <span class="build-no build-no-mobile" id="buildNoMobile"></span></div>
       <div class="sidebar-topbar-actions">
         <button class="sidebar-toggle" id="notesTopToggle" aria-label="Toggle notes">&#9998;</button>
         <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle menu">&#9776;</button>
@@ -484,6 +492,7 @@
         <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
         <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
       </div>
+      <div class="build-no build-no-desktop" id="buildNoDesktop"></div>
     </div>
   </div>
 
@@ -658,6 +667,11 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
+    // ── Build number (bumped on every commit) ─────────────────────────────────
+    const BUILD_NO = 1;
+    document.getElementById('buildNoMobile').textContent  = 'b' + BUILD_NO;
+    document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
+
     // ── DOM refs ──────────────────────────────────────────────────────────────
     // Left
     const btnRecord    = document.getElementById('btnRecord');
