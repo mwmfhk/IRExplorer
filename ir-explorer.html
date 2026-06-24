@@ -259,7 +259,7 @@
     .btn-cal-reset:hover { color: #555; border-color: #ccc; }
     .btn-cal-reset.visible { display: block; }
 
-    .cal-result-canvas { cursor: default; }
+    .cal-result-canvas { cursor: default; touch-action: none; }
 
     .cal-strip {
       display: none;
@@ -302,6 +302,7 @@
       cursor: col-resize;
       transform: translateX(-50%);
       z-index: 4; display: none;
+      touch-action: none;
     }
 
     .region-handle.visible { display: block; }
@@ -324,7 +325,7 @@
 
     .blend-section { display: flex; flex-direction: column; gap: 0.75rem; }
 
-    .blend-canvas { width: 100%; height: 260px; display: block; cursor: default; }
+    .blend-canvas { width: 100%; height: 260px; display: block; cursor: default; touch-action: none; }
 
     .blend-controls {
       display: flex; align-items: center; gap: 0.6rem;
@@ -335,7 +336,7 @@
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
     .knob-label { font-size: 0.62rem; color: #777; letter-spacing: 0.08em; text-transform: uppercase; }
 
-    .ir-knob { width: 42px; height: 42px; cursor: ns-resize; }
+    .ir-knob { width: 42px; height: 42px; cursor: ns-resize; touch-action: none; }
     .gain-label { font-size: 0.62rem; color: #555; letter-spacing: 0.04em; }
 
     .knobs-row { display: flex; gap: 0.75rem; justify-content: center; }
@@ -386,7 +387,7 @@
     }
     .slot-norm-popup.active { display: flex; }
     .norm-title { font-size: 0.52rem; color: #aaa; letter-spacing: 0.1em; text-transform: uppercase; }
-    .norm-knob-canvas { display: block; cursor: ns-resize; }
+    .norm-knob-canvas { display: block; cursor: ns-resize; touch-action: none; }
     .norm-db-label { font-size: 0.6rem; color: #555; letter-spacing: 0.04em; white-space: nowrap; }
 
     .input-knob-wrap {
@@ -394,7 +395,7 @@
       margin-left: auto;
     }
     .input-knob-label { font-size: 0.62rem; color: #777; letter-spacing: 0.06em; text-transform: uppercase; }
-    .input-knob { width: 32px; height: 32px; cursor: ns-resize; }
+    .input-knob { width: 32px; height: 32px; cursor: ns-resize; touch-action: none; }
 
     /* ── Sidebar / notes toggle buttons (hidden on desktop) ─────────────────── */
     .sidebar-topbar { display: flex; align-items: center; justify-content: space-between; }
@@ -1103,7 +1104,7 @@
     }
 
     // ── Knob events — left ────────────────────────────────────────────────────
-    reverbKnob.addEventListener('mousedown', e => {
+    reverbKnob.addEventListener('pointerdown', e => {
       rvbDrag = true; rvbStartY = e.clientY; rvbStartMix = reverbMix; e.preventDefault();
     });
     reverbKnob.addEventListener('dblclick', () => {
@@ -1112,7 +1113,7 @@
       if (reverbDry) reverbDry.gain.value = 1;
       drawReverbKnob(); reverbLabel.textContent = '0%';
     });
-    inputGainKnob.addEventListener('mousedown', e => {
+    inputGainKnob.addEventListener('pointerdown', e => {
       inputKnobDrag = true; inputKnobStartY = e.clientY; inputKnobStartDb = inputGainDb; e.preventDefault();
     });
     inputGainKnob.addEventListener('dblclick', () => {
@@ -1122,7 +1123,7 @@
     });
 
     // ── Knob events — right ───────────────────────────────────────────────────
-    reverbKnobR.addEventListener('mousedown', e => {
+    reverbKnobR.addEventListener('pointerdown', e => {
       rightRvbDrag = true; rightRvbStartY = e.clientY; rightRvbStartMix = rightReverbMix; e.preventDefault();
     });
     reverbKnobR.addEventListener('dblclick', () => {
@@ -1131,7 +1132,7 @@
       if (rightReverbDry) rightReverbDry.gain.value = 1;
       drawRightReverbKnob(); reverbLabelR.textContent = '0%';
     });
-    inputGainKnobR.addEventListener('mousedown', e => {
+    inputGainKnobR.addEventListener('pointerdown', e => {
       rightInputKnobDrag = true; rightInputKnobStartY = e.clientY; rightInputKnobStartDb = rightInputGainDb; e.preventDefault();
     });
     inputGainKnobR.addEventListener('dblclick', () => {
@@ -1141,16 +1142,16 @@
     });
 
     // ── EQ knob events — left ────────────────────────────────────────────────
-    eqLowKnob.addEventListener('mousedown',  e => { eqLowDrag  = true; eqLowStartY  = e.clientY; eqLowStartDb  = eqLowDb;  e.preventDefault(); });
-    eqMidKnob.addEventListener('mousedown',  e => { eqMidDrag  = true; eqMidStartY  = e.clientY; eqMidStartDb  = eqMidDb;  e.preventDefault(); });
-    eqHighKnob.addEventListener('mousedown', e => { eqHighDrag = true; eqHighStartY = e.clientY; eqHighStartDb = eqHighDb; e.preventDefault(); });
+    eqLowKnob.addEventListener('pointerdown',  e => { eqLowDrag  = true; eqLowStartY  = e.clientY; eqLowStartDb  = eqLowDb;  e.preventDefault(); });
+    eqMidKnob.addEventListener('pointerdown',  e => { eqMidDrag  = true; eqMidStartY  = e.clientY; eqMidStartDb  = eqMidDb;  e.preventDefault(); });
+    eqHighKnob.addEventListener('pointerdown', e => { eqHighDrag = true; eqHighStartY = e.clientY; eqHighStartDb = eqHighDb; e.preventDefault(); });
     eqLowKnob.addEventListener('dblclick',  () => { eqLowDb  = 0; if (eqLowNode)  eqLowNode.gain.value  = 0; drawEqKnobs(); });
     eqMidKnob.addEventListener('dblclick',  () => { eqMidDb  = 0; if (eqMidNode)  eqMidNode.gain.value  = 0; drawEqKnobs(); });
     eqHighKnob.addEventListener('dblclick', () => { eqHighDb = 0; if (eqHighNode) eqHighNode.gain.value = 0; drawEqKnobs(); });
     // ── EQ knob events — right ───────────────────────────────────────────────
-    eqLowKnobR.addEventListener('mousedown',  e => { rightEqLowDrag  = true; rightEqLowStartY  = e.clientY; rightEqLowStartDb  = rightEqLowDb;  e.preventDefault(); });
-    eqMidKnobR.addEventListener('mousedown',  e => { rightEqMidDrag  = true; rightEqMidStartY  = e.clientY; rightEqMidStartDb  = rightEqMidDb;  e.preventDefault(); });
-    eqHighKnobR.addEventListener('mousedown', e => { rightEqHighDrag = true; rightEqHighStartY = e.clientY; rightEqHighStartDb = rightEqHighDb; e.preventDefault(); });
+    eqLowKnobR.addEventListener('pointerdown',  e => { rightEqLowDrag  = true; rightEqLowStartY  = e.clientY; rightEqLowStartDb  = rightEqLowDb;  e.preventDefault(); });
+    eqMidKnobR.addEventListener('pointerdown',  e => { rightEqMidDrag  = true; rightEqMidStartY  = e.clientY; rightEqMidStartDb  = rightEqMidDb;  e.preventDefault(); });
+    eqHighKnobR.addEventListener('pointerdown', e => { rightEqHighDrag = true; rightEqHighStartY = e.clientY; rightEqHighStartDb = rightEqHighDb; e.preventDefault(); });
     eqLowKnobR.addEventListener('dblclick',  () => { rightEqLowDb  = 0; if (rightEqLowNode)  rightEqLowNode.gain.value  = 0; drawRightEqKnobs(); });
     eqMidKnobR.addEventListener('dblclick',  () => { rightEqMidDb  = 0; if (rightEqMidNode)  rightEqMidNode.gain.value  = 0; drawRightEqKnobs(); });
     eqHighKnobR.addEventListener('dblclick', () => { rightEqHighDb = 0; if (rightEqHighNode) rightEqHighNode.gain.value = 0; drawRightEqKnobs(); });
@@ -1197,7 +1198,7 @@
 
     slotNormPopup.addEventListener('mouseenter', () => { clearTimeout(normHideTimer); normHideTimer = null; });
     slotNormPopup.addEventListener('mouseleave', hideNormPopupSoon);
-    normKnobCanvas.addEventListener('mousedown', e => {
+    normKnobCanvas.addEventListener('pointerdown', e => {
       if (normHoveredSlotIdx < 0) return;
       normKnobDrag = true;
       normKnobStartY = e.clientY;
@@ -1211,7 +1212,7 @@
     btnAddIrR.addEventListener('click', () => { rightPendingSlot = null; irFileInputR.click(); });
 
     // ── Blend canvas events — left ────────────────────────────────────────────
-    blendCanvas.addEventListener('mousedown', e => {
+    blendCanvas.addEventListener('pointerdown', e => {
       if (irSlots.length < 2) return;
       const p = canvasPos(blendCanvas, e);
       if (Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT) { hexDrag = true; e.preventDefault(); }
@@ -1223,7 +1224,7 @@
         if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { pendingSlot = i; irFileInput.click(); }
       });
     });
-    blendCanvas.addEventListener('mousemove', e => {
+    blendCanvas.addEventListener('pointermove', e => {
       const p = canvasPos(blendCanvas, e);
       const nearBlend  = irSlots.length >= 2 && Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT;
       let nearIdx = -1;
@@ -1235,7 +1236,7 @@
     blendCanvas.addEventListener('mouseleave', () => { hideRemoveBtnSoon(); hideNormPopupSoon(); });
 
     // ── Blend canvas events — right ───────────────────────────────────────────
-    blendCanvasR.addEventListener('mousedown', e => {
+    blendCanvasR.addEventListener('pointerdown', e => {
       if (rightIrSlots.length < 2) return;
       const p = canvasPos(blendCanvasR, e);
       if (Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT) { rightHexDrag = true; e.preventDefault(); }
@@ -1247,7 +1248,7 @@
         if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { rightPendingSlot = i; irFileInputR.click(); }
       });
     });
-    blendCanvasR.addEventListener('mousemove', e => {
+    blendCanvasR.addEventListener('pointermove', e => {
       const p = canvasPos(blendCanvasR, e);
       const nearBlend  = rightIrSlots.length >= 2 && Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT;
       let nearIdx = -1;
@@ -1614,7 +1615,7 @@
     );
 
     // ── Unified document listeners ─────────────────────────────────────────────
-    document.addEventListener('mousemove', e => {
+    document.addEventListener('pointermove', e => {
       if (rvbDrag) {
         reverbMix = Math.max(0, Math.min(1, rvbStartMix + (rvbStartY - e.clientY) * RVB_PER_PX));
         if (reverbWet) reverbWet.gain.value = reverbMix;
@@ -1681,7 +1682,7 @@
       }
     });
 
-    document.addEventListener('mouseup', () => {
+    document.addEventListener('pointerup', () => {
       rvbDrag = inputKnobDrag = hexDrag = false; waveDrag = null;
       rightRvbDrag = rightInputKnobDrag = rightHexDrag = false;
       normKnobDrag = false;
@@ -2206,8 +2207,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     // ── Loop region ───────────────────────────────────────────────────────────
-    handleLeft.addEventListener('mousedown',  e => { waveDrag = 'left';  e.preventDefault(); });
-    handleRight.addEventListener('mousedown', e => { waveDrag = 'right'; e.preventDefault(); });
+    handleLeft.addEventListener('pointerdown',  e => { waveDrag = 'left';  e.preventDefault(); });
+    handleRight.addEventListener('pointerdown', e => { waveDrag = 'right'; e.preventDefault(); });
 
     function updateRegion() {
       handleLeft.style.left  = loopStart * 100 + '%';
@@ -2695,7 +2696,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Cal result diagram drag ───────────────────────────────────────────────
     const CAL_PRE = 0.05, CAL_SPAN = 0.6;
 
-    calResultCanvas.addEventListener('mousedown', e => {
+    calResultCanvas.addEventListener('pointerdown', e => {
       if (!calResultData) return;
       const rect = calResultCanvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -2708,7 +2709,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       }
     });
 
-    calResultCanvas.addEventListener('mousemove', e => {
+    calResultCanvas.addEventListener('pointermove', e => {
       if (!calResultData) return;
       const rect = calResultCanvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -2721,7 +2722,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       }
     });
 
-    document.addEventListener('mouseup', e => {
+    document.addEventListener('pointerup', e => {
       if (calDragging) {
         calDragging = false;
         calResultCanvas.style.cursor = 'default';
