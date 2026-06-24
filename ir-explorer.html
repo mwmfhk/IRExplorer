@@ -752,7 +752,6 @@
 
     // ── Left state ────────────────────────────────────────────────────────────
     let audioCtx    = null;
-    let audioCtxForPlay = false;
     let mediaRec    = null;
     let chunks      = [];
     let audioBuffer = null;
@@ -1696,21 +1695,41 @@
       return audioCtx;
     }
 
-    // iOS Safari requires AudioContext to be created inside a user gesture.
-    // We detect iOS and show a tap-to-begin overlay that creates + unlocks the
-    // context and loads the demo — all within the gesture.
+    // iOS Safari treats Web Audio API as the "ambient" audio session category,
+    // which is routed to silent/muted on the speaker even when ctx.state is
+    // 'running' and the clock advances. Playing an HTML5 <audio> element first
+    // elevates the session to "media playback", after which Web Audio also
+    // plays out the speaker. We keep a looping silence WAV alive for the
+    // lifetime of the page so the elevated session is never released.
+    let iosSilenceAudio = null;
+    function buildSilenceWavDataUrl(durSec = 0.5, sr = 44100) {
+      const N = Math.round(durSec * sr);
+      const ab = new ArrayBuffer(44 + N * 2);
+      const dv = new DataView(ab);
+      const wr = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+      wr(0, 'RIFF'); dv.setUint32(4, 36 + N * 2, true);
+      wr(8, 'WAVE'); wr(12, 'fmt '); dv.setUint32(16, 16, true);
+      dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true);
+      dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+      wr(36, 'data'); dv.setUint32(40, N * 2, true);
+      let bin = ''; const u8 = new Uint8Array(ab);
+      for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+      return 'data:audio/wav;base64,' + btoa(bin);
+    }
     function unlockAndResume() {
+      // Start the looping silence FIRST, synchronously in the gesture,
+      // so iOS upgrades the session category before any Web Audio call.
+      if (!iosSilenceAudio) {
+        iosSilenceAudio = new Audio(buildSilenceWavDataUrl());
+        iosSilenceAudio.loop = true;
+      }
+      iosSilenceAudio.play().catch(() => {});
       const ctx = getAudioCtx();
       ctx.resume().catch(() => {});
       const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
       const src = ctx.createBufferSource();
       src.buffer = buf; src.connect(ctx.destination); src.start(0);
-      // iOS tears down the hardware audio session ~1 s after the last sound ends.
-      // A silent oscillator (gain = 0) keeps the session alive indefinitely so
-      // sources started after async loading still reach the speaker.
-      const osc = ctx.createOscillator();
-      const g   = ctx.createGain(); g.gain.value = 0;
-      osc.connect(g); g.connect(ctx.destination); osc.start(0);
     }
 
     // ── AudioWorklet recorder ─────────────────────────────────────────────────
@@ -2210,19 +2229,11 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
       if (isPlaying) { stopPlay(); return; }
-      if (!audioCtxForPlay) {
-        // iOS only routes audio to the speaker for AudioContexts created inside a native
-        // button gesture. The decode context (created in the overlay div tap) may lack
-        // that privilege. AudioBuffers are context-agnostic — they work in any context
-        // at the same sample rate (both will be 48 kHz on the same iOS device).
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        workletCtx = null;
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain(); g.gain.value = 0;
-        osc.connect(g); g.connect(audioCtx.destination); osc.start(0);
-        audioCtxForPlay = true;
-      }
-      audioCtx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
+      // Make sure the iOS silence keepalive is still going (some browsers pause
+      // it when the tab backgrounds); re-issuing play() inside a gesture is safe.
+      if (iosSilenceAudio) iosSilenceAudio.play().catch(() => {});
+      const ctx = getAudioCtx();
+      ctx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
     });
 
     btnReset.addEventListener('click', () => {
