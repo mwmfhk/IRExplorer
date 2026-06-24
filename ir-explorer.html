@@ -401,6 +401,7 @@
 
     /* ── Sidebar / notes toggle buttons (hidden on desktop) ─────────────────── */
     .sidebar-topbar { display: flex; align-items: center; justify-content: space-between; }
+    .sidebar-topbar-actions { display: flex; gap: 0.25rem; align-items: center; }
     .sidebar-toggle, .notes-toggle {
       display: none;
       background: none; border: none; cursor: pointer;
@@ -408,6 +409,7 @@
     }
     .notes-topbar { display: flex; align-items: center; justify-content: space-between; }
     .notes-body { display: flex; flex-direction: column; flex: 1; }
+    .sidebar-notes { display: none; }
 
     /* ── Mobile ──────────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -427,30 +429,30 @@
       }
       .sidebar-body.open { display: flex; }
 
-      /* Main content fills width; bottom padding leaves room for fixed notes topbar */
-      .main-content { padding: 1rem 1rem 4rem; gap: 1rem; }
+      /* Main content fills width */
+      .main-content { padding: 1rem; gap: 1rem; }
 
       /* Panels stack vertically */
       .panels { flex-direction: column; }
       .card { width: 100%; }
 
-      /* Notes panel: fixed bottom sheet that slides up to ~75vh when open */
-      .notes-panel {
-        width: 100%; max-width: none; min-width: 0; min-height: 0;
-        border-left: none; border-top: 1px solid #e5e5e5;
-        padding: 0.75rem 1rem; gap: 0;
-        position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-        background: #fff;
+      /* Hide the bottom notes panel on mobile — replaced by sidebar drawer */
+      .notes-panel { display: none; }
+
+      /* Notes drawer inside the sidebar (toggled by ✎ in topbar) */
+      .sidebar-notes {
+        flex-direction: column;
+        padding-top: 0.75rem;
+        gap: 0.5rem;
       }
-      .notes-toggle { display: block; }
-      .notes-body {
-        display: flex; flex-direction: column;
-        height: 0; padding-top: 0;
-        overflow: hidden;
-        transition: height 0.3s ease, padding-top 0.3s ease;
+      .sidebar-notes.open { display: flex; height: 70vh; }
+      .sidebar-notes .notes-textarea {
+        width: 100%; min-height: 0; flex: 1;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.78rem; color: #111; line-height: 1.6;
+        background: transparent; border: 1px solid #e5e5e5;
+        padding: 0.5rem; outline: none; resize: none;
       }
-      .notes-body.open { height: 75vh; padding-top: 0.5rem; }
-      .notes-textarea { min-height: 0; flex: 1; }
 
       /* Blend canvas can be smaller on mobile */
       .blend-canvas { height: 200px; }
@@ -463,7 +465,13 @@
   <div class="sidebar">
     <div class="sidebar-topbar">
       <div class="sidebar-title">IR Explorer</div>
-      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle menu">&#9776;</button>
+      <div class="sidebar-topbar-actions">
+        <button class="sidebar-toggle" id="notesTopToggle" aria-label="Toggle notes">&#9998;</button>
+        <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle menu">&#9776;</button>
+      </div>
+    </div>
+    <div class="sidebar-notes" id="sidebarNotes">
+      <textarea class="notes-textarea" id="sessionNotesMobile" placeholder="Session notes…"></textarea>
     </div>
     <div class="sidebar-body" id="sidebarBody">
       <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
@@ -3024,8 +3032,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       rightIrBypassed = s.rightIrBypassed ?? false;
       rightEqLowDb = s.rightEqLowDb ?? 0; rightEqMidDb = s.rightEqMidDb ?? 0; rightEqHighDb = s.rightEqHighDb ?? 0;
       calibratedLatency = s.calibratedLatency ?? 0; rightSyncTrimSec = s.rightSyncTrimSec ?? 0;
-      sessionNotes = s.sessionNotes ?? '';
-      sessionNotesEl.value = sessionNotes;
+      setSessionNotes(s.sessionNotes ?? '');
 
       drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
       drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
@@ -3153,7 +3160,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       reverbLabelR.textContent = '0%'; inputGainLabelR.textContent = '+0.0 dB';
 
       // Notes
-      sessionNotes = ''; sessionNotesEl.value = '';
+      setSessionNotes('');
 
       // Calibration
       calibratedLatency = 0; rightSyncTrimSec = 0;
@@ -3163,7 +3170,14 @@ registerProcessor('recorder-processor', RecorderProcessor);
       updateTrimLabel(); updateRightRecordBtn();
     }
 
-    sessionNotesEl.addEventListener('input', () => { sessionNotes = sessionNotesEl.value; });
+    const sessionNotesMobileEl = document.getElementById('sessionNotesMobile');
+    function setSessionNotes(v) {
+      sessionNotes = v;
+      if (sessionNotesEl.value !== v) sessionNotesEl.value = v;
+      if (sessionNotesMobileEl.value !== v) sessionNotesMobileEl.value = v;
+    }
+    sessionNotesEl.addEventListener('input',       () => setSessionNotes(sessionNotesEl.value));
+    sessionNotesMobileEl.addEventListener('input', () => setSessionNotes(sessionNotesMobileEl.value));
 
     btnSave.addEventListener('click', () =>
       saveSession().catch(e => setStatus('Save error: ' + e.message))
@@ -3187,18 +3201,27 @@ registerProcessor('recorder-processor', RecorderProcessor);
     });
 
     // ── Mobile toggles ────────────────────────────────────────────────────────
-    const sidebarToggle = document.getElementById('sidebarToggle');
-    const sidebarBody   = document.getElementById('sidebarBody');
-    const notesToggle   = document.getElementById('notesToggle');
-    const notesBody     = document.getElementById('notesBody');
+    const sidebarToggle  = document.getElementById('sidebarToggle');
+    const sidebarBody    = document.getElementById('sidebarBody');
+    const notesToggle    = document.getElementById('notesToggle');
+    const notesBody      = document.getElementById('notesBody');
+    const notesTopToggle = document.getElementById('notesTopToggle');
+    const sidebarNotes   = document.getElementById('sidebarNotes');
 
     sidebarToggle.addEventListener('click', () => {
       const open = sidebarBody.classList.toggle('open');
       sidebarToggle.textContent = open ? '✕' : '☰';
+      // Close notes drawer if sidebar drawer is being opened (avoid both at once)
+      if (open) { sidebarNotes.classList.remove('open'); notesTopToggle.textContent = '✎'; }
     });
     notesToggle.addEventListener('click', () => {
       const open = notesBody.classList.toggle('open');
       notesToggle.textContent = open ? '▼' : '▲';
+    });
+    notesTopToggle.addEventListener('click', () => {
+      const open = sidebarNotes.classList.toggle('open');
+      notesTopToggle.textContent = open ? '✕' : '✎';
+      if (open) { sidebarBody.classList.remove('open'); sidebarToggle.textContent = '☰'; }
     });
 
     // ── Init ──────────────────────────────────────────────────────────────────
