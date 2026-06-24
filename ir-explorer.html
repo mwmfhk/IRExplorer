@@ -444,12 +444,12 @@
       .notes-toggle { display: block; }
       .notes-body {
         display: flex; flex-direction: column;
-        max-height: 0; padding-top: 0;
+        height: 0; padding-top: 0;
         overflow: hidden;
-        transition: max-height 0.3s ease, padding-top 0.3s ease;
+        transition: height 0.3s ease, padding-top 0.3s ease;
       }
-      .notes-body.open { max-height: 75vh; padding-top: 0.5rem; }
-      .notes-textarea { min-height: 120px; }
+      .notes-body.open { height: 75vh; padding-top: 0.5rem; }
+      .notes-textarea { min-height: 0; flex: 1; }
 
       /* Blend canvas can be smaller on mobile */
       .blend-canvas { height: 200px; }
