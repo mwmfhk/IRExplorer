@@ -147,6 +147,7 @@
       text-transform: uppercase;
       color: #aaa;
     }
+    .panel-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 
     .waveform-container {
       position: relative;
@@ -516,7 +517,14 @@
 
     <!-- ── Left panel (Rhythm) ────────────────────────────────────────────── -->
     <div class="card">
-      <div class="panel-label">Rhythm<span class="duration" id="duration"></span></div>
+      <div class="panel-header">
+        <div class="panel-label">Rhythm<span class="duration" id="duration"></span></div>
+        <div class="input-knob-wrap">
+          <span class="input-knob-label">Gain</span>
+          <canvas class="input-knob" id="inputGainKnob" width="64" height="64"></canvas>
+          <span class="gain-label" id="inputGainLabel">+0.0 dB</span>
+        </div>
+      </div>
 
       <div class="waveform-container" id="waveformContainer">
         <canvas class="waveform-canvas" id="waveform"></canvas>
@@ -531,11 +539,6 @@
         <button class="btn-record" id="btnRecord">Record</button>
         <button class="btn-play"   id="btnPlay"><span class="icon-play" id="playIcon"></span> Play</button>
         <button class="btn-reset"  id="btnReset">Reset</button>
-        <div class="input-knob-wrap">
-          <span class="input-knob-label">Gain</span>
-          <canvas class="input-knob" id="inputGainKnob" width="64" height="64"></canvas>
-          <span class="gain-label" id="inputGainLabel">+0.0 dB</span>
-        </div>
       </div>
 
       <div class="blend-section">
@@ -581,7 +584,14 @@
 
     <!-- ── Right panel (Lead) ─────────────────────────────────────────────── -->
     <div class="card">
-      <div class="panel-label">Lead<span class="duration" id="durationR"></span></div>
+      <div class="panel-header">
+        <div class="panel-label">Lead<span class="duration" id="durationR"></span></div>
+        <div class="input-knob-wrap">
+          <span class="input-knob-label">Gain</span>
+          <canvas class="input-knob" id="inputGainKnobR" width="64" height="64"></canvas>
+          <span class="gain-label" id="inputGainLabelR">+0.0 dB</span>
+        </div>
+      </div>
 
       <div class="waveform-container" id="waveformContainerR">
         <canvas class="waveform-canvas" id="waveformR"></canvas>
@@ -591,11 +601,6 @@
       <div class="controls">
         <button class="btn-record" id="btnRecordR" disabled>Record</button>
         <button class="btn-reset"  id="btnResetR">Reset</button>
-        <div class="input-knob-wrap">
-          <span class="input-knob-label">Gain</span>
-          <canvas class="input-knob" id="inputGainKnobR" width="64" height="64"></canvas>
-          <span class="gain-label" id="inputGainLabelR">+0.0 dB</span>
-        </div>
       </div>
 
       <div class="blend-section">
@@ -665,7 +670,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 7;
+    const BUILD_NO = 8;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
