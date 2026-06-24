@@ -207,12 +207,7 @@
     .btn-reset:hover { color: #666; border-color: #ccc; }
     .btn-reset.visible { display: block; }
 
-    .status {
-      font-size: 0.72rem; color: #555;
-      letter-spacing: 0.04em;
-      min-height: 1rem;
-      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    }
+    .status { display: none; }
 
     .dot {
       width: 6px; height: 6px;
@@ -667,7 +662,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 5;
+    const BUILD_NO = 6;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
