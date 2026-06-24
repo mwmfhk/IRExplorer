@@ -412,9 +412,9 @@
     .notes-body { display: flex; flex-direction: column; flex: 1; }
     .sidebar-notes { display: none; }
 
-    .build-no { font-size: 0.62rem; color: #bbb; letter-spacing: 0.08em; font-family: 'SF Mono', 'Fira Code', monospace; }
-    .build-no-mobile  { display: none; margin-left: 0.4rem; }
-    .build-no-desktop { display: block; margin-top: 0.5rem; text-align: left; }
+    .build-no { font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: #aaa; }
+    .build-no-mobile  { display: none; margin-left: 0.5rem; }
+    .build-no-desktop { display: block; margin-top: auto; }
 
     /* ── Mobile ──────────────────────────────────────────────────────────────── */
     @media (max-width: 768px) {
@@ -492,8 +492,8 @@
         <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
         <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
       </div>
-      <div class="build-no build-no-desktop" id="buildNoDesktop"></div>
     </div>
+    <div class="build-no build-no-desktop" id="buildNoDesktop"></div>
   </div>
 
   <div class="main-content">
@@ -668,7 +668,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 1;
+    const BUILD_NO = 2;
     document.getElementById('buildNoMobile').textContent  = 'b' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
