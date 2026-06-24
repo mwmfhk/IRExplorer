@@ -848,6 +848,9 @@
     let normHoveredSlotIdx = -1, normHoveredIsRight = false;
     let normHideTimer = null;
     let normKnobDrag = false, normKnobStartY = 0, normKnobStartDb = 0;
+    // Set true by a touch pointerdown that opened the slot popup so the
+    // subsequent click handler doesn't also fire the file picker.
+    let touchHandledVertex = false;
 
     const slotNormPopup   = document.getElementById('slotNormPopup');
     const normKnobCanvas  = document.getElementById('normKnobCanvas');
@@ -1213,18 +1216,37 @@
 
     // ── Blend canvas events — left ────────────────────────────────────────────
     blendCanvas.addEventListener('pointerdown', e => {
-      if (irSlots.length < 2) return;
+      touchHandledVertex = false;
       const p = canvasPos(blendCanvas, e);
-      if (Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT) { hexDrag = true; e.preventDefault(); }
+      if (irSlots.length >= 2 && Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT) {
+        hexDrag = true; e.preventDefault(); return;
+      }
+      if (e.pointerType === 'touch') {
+        // Tap-to-show: only open the slot popup on an explicit tap, never
+        // during a drag. Tap on empty space dismisses any open popup.
+        let hitIdx = -1;
+        slotVertices(irSlots).forEach((v, i) => {
+          if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) hitIdx = i;
+        });
+        if (hitIdx >= 0) {
+          showRemoveBtn(blendCanvas, irSlots, hitIdx, false);
+          showNormPopup(blendCanvas, irSlots, hitIdx, false);
+          touchHandledVertex = true;
+          e.preventDefault();
+        } else {
+          hideRemoveBtnSoon(); hideNormPopupSoon();
+        }
+      }
     });
     blendCanvas.addEventListener('click', e => {
-      if (hexDrag) return;
+      if (hexDrag || touchHandledVertex) return;
       const p = canvasPos(blendCanvas, e);
       slotVertices(irSlots).forEach((v, i) => {
         if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { pendingSlot = i; irFileInput.click(); }
       });
     });
     blendCanvas.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
       const p = canvasPos(blendCanvas, e);
       const nearBlend  = irSlots.length >= 2 && Math.hypot(p.x - blendPt.x, p.y - blendPt.y) < BLEND_HIT;
       let nearIdx = -1;
@@ -1237,18 +1259,35 @@
 
     // ── Blend canvas events — right ───────────────────────────────────────────
     blendCanvasR.addEventListener('pointerdown', e => {
-      if (rightIrSlots.length < 2) return;
+      touchHandledVertex = false;
       const p = canvasPos(blendCanvasR, e);
-      if (Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT) { rightHexDrag = true; e.preventDefault(); }
+      if (rightIrSlots.length >= 2 && Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT) {
+        rightHexDrag = true; e.preventDefault(); return;
+      }
+      if (e.pointerType === 'touch') {
+        let hitIdx = -1;
+        slotVertices(rightIrSlots).forEach((v, i) => {
+          if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) hitIdx = i;
+        });
+        if (hitIdx >= 0) {
+          showRemoveBtn(blendCanvasR, rightIrSlots, hitIdx, true);
+          showNormPopup(blendCanvasR, rightIrSlots, hitIdx, true);
+          touchHandledVertex = true;
+          e.preventDefault();
+        } else {
+          hideRemoveBtnSoon(); hideNormPopupSoon();
+        }
+      }
     });
     blendCanvasR.addEventListener('click', e => {
-      if (rightHexDrag) return;
+      if (rightHexDrag || touchHandledVertex) return;
       const p = canvasPos(blendCanvasR, e);
       slotVertices(rightIrSlots).forEach((v, i) => {
         if (Math.hypot(p.x - v.x, p.y - v.y) < VERT_R + 4) { rightPendingSlot = i; irFileInputR.click(); }
       });
     });
     blendCanvasR.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
       const p = canvasPos(blendCanvasR, e);
       const nearBlend  = rightIrSlots.length >= 2 && Math.hypot(p.x - rightBlendPt.x, p.y - rightBlendPt.y) < BLEND_HIT;
       let nearIdx = -1;
@@ -1258,6 +1297,16 @@
       else { hideRemoveBtnSoon(); hideNormPopupSoon(); }
     });
     blendCanvasR.addEventListener('mouseleave', () => { hideRemoveBtnSoon(); hideNormPopupSoon(); });
+
+    // Touch: tap anywhere outside the blend canvases and outside the slot
+    // popups dismisses an open slot popup.
+    document.addEventListener('pointerdown', e => {
+      if (e.pointerType !== 'touch') return;
+      if (slotRemoveBtn.style.display !== 'flex' && slotNormPopup.style.display !== 'flex') return;
+      if (e.target === blendCanvas || e.target === blendCanvasR) return;
+      if (slotRemoveBtn.contains(e.target) || slotNormPopup.contains(e.target)) return;
+      hideRemoveBtnSoon(); hideNormPopupSoon();
+    });
 
     // ── IR file loading — left ────────────────────────────────────────────────
     irFileInput.addEventListener('change', async e => {
