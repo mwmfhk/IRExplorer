@@ -2717,7 +2717,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Session save / load ───────────────────────────────────────────────────
 
     // Legacy JSON helpers (used for loading old .json sessions)
-    function decBuf(enc) {
+    async function decBuf(enc) {
       if (!enc) return null;
       const ctx = getAudioCtx();
       const buf = ctx.createBuffer(enc.ch.length, enc.n, enc.sr);
@@ -2726,7 +2726,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
         for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
         buf.getChannelData(c).set(new Float32Array(u.buffer));
       });
-      return buf;
+      return resampleBuffer(ctx, buf);
     }
     function decF32(b64) {
       if (!b64) return null;
@@ -2774,30 +2774,43 @@ registerProcessor('recorder-processor', RecorderProcessor);
       // Store original length so we can strip encoder delay on decode
       return { prefix, fmt: 'mp3', n: buf.length, sr: buf.sampleRate };
     }
+    // Resample buffer to match ctx.sampleRate — needed on iOS Safari where the
+    // AudioContext may run at 48000 Hz even when saved buffers are at 44100 Hz.
+    async function resampleBuffer(ctx, buf) {
+      if (buf.sampleRate === ctx.sampleRate) return buf;
+      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      const length = Math.round(buf.length * ctx.sampleRate / buf.sampleRate);
+      const off = new OfflineCtx(buf.numberOfChannels, length, ctx.sampleRate);
+      const src = off.createBufferSource();
+      src.buffer = buf;
+      src.connect(off.destination);
+      src.start(0);
+      return off.startRendering();
+    }
+
     async function bufFromZip(zip, desc) {
       if (!desc) return null;
+      const ctx = getAudioCtx();
       if (desc.fmt === 'mp3') {
         const ab = await zip.file(`${desc.prefix}.mp3`).async('arraybuffer');
-        const decoded = await new Promise((res, rej) => getAudioCtx().decodeAudioData(ab, res, rej));
+        const decoded = await new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej));
         // At low bitrates LAME resamples internally, so decoded.sampleRate may differ.
         const LAME_DELAY = 576;
         const n_enc = Math.round(desc.n * decoded.sampleRate / desc.sr);
         const skip = decoded.length >= n_enc + LAME_DELAY ? LAME_DELAY : 0;
         const actual_n = Math.min(n_enc, decoded.length - skip);
-        const ctx = getAudioCtx();
         const out = ctx.createBuffer(decoded.numberOfChannels, actual_n, decoded.sampleRate);
         for (let c = 0; c < decoded.numberOfChannels; c++)
           out.getChannelData(c).set(decoded.getChannelData(c).subarray(skip, skip + actual_n));
-        return out;
+        return resampleBuffer(ctx, out);
       }
       // fmt: 'f32' or legacy (no fmt field)
-      const ctx = getAudioCtx();
       const buf = ctx.createBuffer(desc.channels, desc.n, desc.sr);
       for (let c = 0; c < desc.channels; c++) {
         const ab = await zip.file(`${desc.prefix}_ch${c}.f32`).async('arraybuffer');
         buf.getChannelData(c).set(new Float32Array(ab));
       }
-      return buf;
+      return resampleBuffer(ctx, buf);
     }
     function f32ToZip(zip, name, f32) {
       if (!f32) return false;
