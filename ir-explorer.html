@@ -1695,19 +1695,16 @@
       return audioCtx;
     }
 
-    // iOS Safari: unlock AudioContext on first touch anywhere on the page.
-    // Must happen before any playback attempt.
-    function iosUnlock() {
+    // iOS Safari requires AudioContext to be created inside a user gesture.
+    // We detect iOS and show a tap-to-begin overlay that creates + unlocks the
+    // context and loads the demo — all within the gesture.
+    function unlockAndResume() {
       const ctx = getAudioCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-        // Play a zero-length silent buffer — required on some iOS versions
-        const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
-        const src = ctx.createBufferSource();
-        src.buffer = buf; src.connect(ctx.destination); src.start(0);
-      }
+      ctx.resume().catch(() => {});
+      const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination); src.start(0);
     }
-    window.addEventListener('touchstart', iosUnlock, { once: true, passive: true });
 
     // ── AudioWorklet recorder ─────────────────────────────────────────────────
     const RECORDER_WORKLET_CODE = `
@@ -3102,7 +3099,28 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Init ──────────────────────────────────────────────────────────────────
     drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
     drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
-    loadDemoSession();
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    if (isIOS) {
+      // On iOS, AudioContext must be created inside a user gesture.
+      // Show a tap-to-begin overlay that unlocks audio and loads the demo together.
+      const overlay = document.createElement('div');
+      overlay.style.cssText = [
+        'position:fixed', 'inset:0', 'z-index:9999',
+        'background:rgba(255,255,255,0.96)',
+        'display:flex', 'align-items:center', 'justify-content:center',
+        'cursor:pointer', 'font-family:SF Mono,Fira Code,monospace',
+      ].join(';');
+      overlay.innerHTML = '<div style="text-align:center;font-size:0.8rem;color:#555;letter-spacing:0.12em;text-transform:uppercase">Tap to begin</div>';
+      document.body.appendChild(overlay);
+      overlay.addEventListener('click', () => {
+        overlay.remove();
+        unlockAndResume();
+        loadDemoSession();
+      }, { once: true });
+    } else {
+      loadDemoSession();
+    }
   </script>
 </body>
 </html>
