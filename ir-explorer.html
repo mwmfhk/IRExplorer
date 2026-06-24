@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
   <title>IR Explorer</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -407,6 +407,7 @@
       display: none;
       background: none; border: none; cursor: pointer;
       font-size: 1.1rem; color: #555; padding: 0.25rem 0.5rem;
+      width: 2rem; text-align: center; min-width: 0;
     }
     .notes-topbar { display: flex; align-items: center; justify-content: space-between; }
     .notes-body { display: flex; flex-direction: column; flex: 1; }
@@ -458,8 +459,8 @@
         width: 100%; min-height: 0; flex: 1;
         font-family: 'SF Mono', 'Fira Code', monospace;
         font-size: 0.78rem; color: #111; line-height: 1.6;
-        background: transparent; border: 1px solid #e5e5e5;
-        padding: 0.5rem; outline: none; resize: none;
+        background: transparent; border: none;
+        padding: 0; outline: none; resize: none;
       }
 
       /* Blend canvas can be smaller on mobile */
@@ -666,8 +667,8 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 4;
-    document.getElementById('buildNoMobile').textContent  = 'b' + BUILD_NO;
+    const BUILD_NO = 5;
+    document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
