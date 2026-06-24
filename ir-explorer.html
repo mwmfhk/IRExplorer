@@ -396,22 +396,80 @@
     .input-knob-label { font-size: 0.62rem; color: #777; letter-spacing: 0.06em; text-transform: uppercase; }
     .input-knob { width: 32px; height: 32px; cursor: ns-resize; }
 
+    /* ── Sidebar / notes toggle buttons (hidden on desktop) ─────────────────── */
+    .sidebar-topbar { display: flex; align-items: center; justify-content: space-between; }
+    .sidebar-toggle, .notes-toggle {
+      display: none;
+      background: none; border: none; cursor: pointer;
+      font-size: 1.1rem; color: #555; padding: 0.25rem 0.5rem;
+    }
+    .notes-topbar { display: flex; align-items: center; justify-content: space-between; }
+    .notes-body { display: flex; flex-direction: column; flex: 1; }
+
+    /* ── Mobile ──────────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      body { flex-direction: column; align-items: stretch; }
+
+      /* Sidebar becomes sticky top bar */
+      .sidebar {
+        width: 100%; max-width: none; min-width: 0; min-height: 0;
+        border-right: none; border-bottom: 1px solid #e5e5e5;
+        padding: 0.75rem 1rem; gap: 0;
+        position: sticky; top: 0; z-index: 100;
+      }
+      .sidebar-toggle { display: block; }
+      .sidebar-body {
+        display: none; flex-direction: column; gap: 0.6rem;
+        padding-top: 0.75rem;
+      }
+      .sidebar-body.open { display: flex; }
+
+      /* Main content fills width */
+      .main-content { padding: 1rem; gap: 1rem; }
+
+      /* Panels stack vertically */
+      .panels { flex-direction: column; }
+      .card { width: 100%; }
+
+      /* Notes panel becomes sticky bottom bar */
+      .notes-panel {
+        width: 100%; max-width: none; min-width: 0; min-height: 0;
+        border-left: none; border-top: 1px solid #e5e5e5;
+        padding: 0.75rem 1rem; gap: 0;
+        position: sticky; bottom: 0; z-index: 100;
+      }
+      .notes-toggle { display: block; }
+      .notes-body {
+        display: none; max-height: 40vh; overflow-y: auto;
+        padding-top: 0.5rem;
+      }
+      .notes-body.open { display: flex; }
+      .notes-textarea { min-height: 120px; }
+
+      /* Blend canvas can be smaller on mobile */
+      .blend-canvas { height: 200px; }
+    }
 
   </style>
 </head>
 <body>
 
   <div class="sidebar">
-    <div class="sidebar-title">IR Explorer</div>
-    <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
-    <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
-    <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
-    <button class="btn-sidebar" id="btnDemo" style="margin-top:0.75rem">&#9654; Demo session</button>
-    <div style="flex:1"></div>
-    <div class="sidebar-actions">
-      <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
-      <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
-      <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
+    <div class="sidebar-topbar">
+      <div class="sidebar-title">IR Explorer</div>
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle menu">&#9776;</button>
+    </div>
+    <div class="sidebar-body" id="sidebarBody">
+      <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
+      <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
+      <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
+      <button class="btn-sidebar" id="btnDemo" style="margin-top:0.75rem">&#9654; Demo session</button>
+      <div style="flex:1"></div>
+      <div class="sidebar-actions">
+        <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
+        <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
+        <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
+      </div>
     </div>
   </div>
 
@@ -566,8 +624,13 @@
   </div><!-- .main-content -->
 
   <div class="notes-panel">
-    <div class="notes-title">Notes</div>
-    <textarea class="notes-textarea" id="sessionNotes" placeholder="Session notes…"></textarea>
+    <div class="notes-topbar">
+      <div class="notes-title">Notes</div>
+      <button class="notes-toggle" id="notesToggle" aria-label="Toggle notes">&#9650;</button>
+    </div>
+    <div class="notes-body" id="notesBody">
+      <textarea class="notes-textarea" id="sessionNotes" placeholder="Session notes…"></textarea>
+    </div>
   </div>
 
   <button class="slot-remove-btn" id="slotRemoveBtn">−</button>
@@ -3001,6 +3064,21 @@ registerProcessor('recorder-processor', RecorderProcessor);
       if (rightRawBuffer) drawRightWaveform();
       if (calResultData) drawCalResult();
       drawPolygon(); drawRightPolygon();
+    });
+
+    // ── Mobile toggles ────────────────────────────────────────────────────────
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const sidebarBody   = document.getElementById('sidebarBody');
+    const notesToggle   = document.getElementById('notesToggle');
+    const notesBody     = document.getElementById('notesBody');
+
+    sidebarToggle.addEventListener('click', () => {
+      const open = sidebarBody.classList.toggle('open');
+      sidebarToggle.textContent = open ? '✕' : '☰';
+    });
+    notesToggle.addEventListener('click', () => {
+      const open = notesBody.classList.toggle('open');
+      notesToggle.textContent = open ? '▼' : '▲';
     });
 
     // ── Init ──────────────────────────────────────────────────────────────────
