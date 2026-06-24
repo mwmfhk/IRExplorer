@@ -752,6 +752,7 @@
 
     // ── Left state ────────────────────────────────────────────────────────────
     let audioCtx    = null;
+    let audioCtxForPlay = false;
     let mediaRec    = null;
     let chunks      = [];
     let audioBuffer = null;
@@ -2209,8 +2210,19 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
       if (isPlaying) { stopPlay(); return; }
-      const ctx = getAudioCtx();
-      ctx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
+      if (!audioCtxForPlay) {
+        // iOS only routes audio to the speaker for AudioContexts created inside a native
+        // button gesture. The decode context (created in the overlay div tap) may lack
+        // that privilege. AudioBuffers are context-agnostic — they work in any context
+        // at the same sample rate (both will be 48 kHz on the same iOS device).
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        workletCtx = null;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain(); g.gain.value = 0;
+        osc.connect(g); g.connect(audioCtx.destination); osc.start(0);
+        audioCtxForPlay = true;
+      }
+      audioCtx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
     });
 
     btnReset.addEventListener('click', () => {
