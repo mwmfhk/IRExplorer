@@ -2209,18 +2209,20 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', async () => {
-      setStatus('tap: ctx=' + (audioCtx ? audioCtx.state : 'none') + ' buf=' + (audioBuffer ? 'ok' : 'null') + ' playing=' + isPlaying);
       const ctx = getAudioCtx();
-      // iOS Safari: ctx.resume() must be called synchronously within the user gesture.
-      // Playing a silent buffer forces the audio session open before any await.
-      try {
-        const b = ctx.createBuffer(1, 1, ctx.sampleRate);
-        const s = ctx.createBufferSource();
-        s.buffer = b; s.connect(ctx.destination); s.start(0);
-      } catch(e) { setStatus('unlock err: ' + e.message); }
-      try { await ctx.resume(); } catch(e) { setStatus('resume err: ' + e.message); }
-      setStatus('after resume: ctx=' + ctx.state + ' isPlaying=' + isPlaying);
+      try { await ctx.resume(); } catch(_) {}
+      setStatus('tap ctx=' + ctx.state + ' t=' + ctx.currentTime.toFixed(3));
       if (isPlaying) { stopPlay(); return; }
+      // Sine-wave test: 440 Hz generated purely in JS, no session data.
+      // If you hear this beep the AudioContext IS reaching the speaker.
+      try {
+        const n = Math.floor(ctx.sampleRate * 1.5);
+        const tb = ctx.createBuffer(1, n, ctx.sampleRate);
+        const td = tb.getChannelData(0);
+        for (let i = 0; i < n; i++) td[i] = Math.sin(2 * Math.PI * 440 * i / ctx.sampleRate) * 0.5;
+        const ts = ctx.createBufferSource(); ts.buffer = tb;
+        ts.connect(ctx.destination); ts.start(0);
+      } catch(e) { setStatus('beep err: ' + e.message); }
       startPlay().catch(e => setStatus('Play error: ' + e.message));
     });
 
