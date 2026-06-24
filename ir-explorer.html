@@ -1997,6 +1997,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Left recording ────────────────────────────────────────────────────────
     btnRecord.addEventListener('click', () => {
+      unlockAndResume();
       mediaRec?.state === 'recording' ? stopRecording() : startRecording();
     });
 
@@ -2230,9 +2231,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
     // ── Buttons ───────────────────────────────────────────────────────────────
     btnPlay.addEventListener('click', () => {
       if (isPlaying) { stopPlay(); return; }
-      // Make sure the iOS silence keepalive is still going (some browsers pause
-      // it when the tab backgrounds); re-issuing play() inside a gesture is safe.
-      if (iosSilenceAudio) iosSilenceAudio.play().catch(() => {});
+      unlockAndResume();
       const ctx = getAudioCtx();
       ctx.resume().then(() => startPlay()).catch(e => setStatus('Play error: ' + e.message));
     });
@@ -3152,27 +3151,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
     drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
     drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
 
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-    if (isIOS) {
-      // On iOS, AudioContext must be created inside a user gesture.
-      // Show a tap-to-begin overlay that unlocks audio and loads the demo together.
-      const overlay = document.createElement('div');
-      overlay.style.cssText = [
-        'position:fixed', 'inset:0', 'z-index:9999',
-        'background:rgba(255,255,255,0.96)',
-        'display:flex', 'align-items:center', 'justify-content:center',
-        'cursor:pointer', 'font-family:SF Mono,Fira Code,monospace',
-      ].join(';');
-      overlay.innerHTML = '<div style="text-align:center;font-size:0.8rem;color:#555;letter-spacing:0.12em;text-transform:uppercase">Tap to begin</div>';
-      document.body.appendChild(overlay);
-      overlay.addEventListener('click', () => {
-        overlay.remove();
-        unlockAndResume();
-        loadDemoSession();
-      }, { once: true });
-    } else {
-      loadDemoSession();
-    }
+    loadDemoSession();
   </script>
 </body>
 </html>
