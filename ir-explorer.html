@@ -698,7 +698,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 13;
+    const BUILD_NO = 14;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
@@ -784,6 +784,11 @@
     // ── Constants ─────────────────────────────────────────────────────────────
     const MAX_SLOTS    = 8;
     const CANVAS_SIZE  = 200;
+    // Polygon bounding box (with labels) extends ~86 logical units above center and
+    // ~43 below. Shifting the drawing down by ~half that difference vertically centers
+    // the visible content inside the canvas so the gaps to the buttons above/below
+    // come out symmetric.
+    const POLY_Y_OFFSET = 21.5;
     const POLY_R       = 58;
     const PHANTOM_R    = 88;
     const VERT_R       = 18;
@@ -961,7 +966,7 @@
       const sc = canvasScale(canvas);
       const v  = slotVertex(slots, idx);
       const sx = r.left + r.width  / 2 + v.x * sc;
-      const sy = r.top  + r.height / 2 + v.y * sc;
+      const sy = r.top  + r.height / 2 + (v.y + POLY_Y_OFFSET) * sc;
       const popW = 74, popH = 76;
       let px = sx + VERT_R * sc + 6;
       let py = sy - popH / 2;
@@ -1013,7 +1018,10 @@
     function canvasPos(canvas, e) {
       const r  = canvas.getBoundingClientRect();
       const sc = canvasScale(canvas);
-      return { x: (e.clientX - r.left - r.width / 2) / sc, y: (e.clientY - r.top - r.height / 2) / sc };
+      return {
+        x: (e.clientX - r.left - r.width  / 2) / sc,
+        y: (e.clientY - r.top  - r.height / 2) / sc - POLY_Y_OFFSET,
+      };
     }
 
     // ── Generic polygon drawing ───────────────────────────────────────────────
@@ -1035,9 +1043,10 @@
       ctx.scale(dpr, dpr);
       ctx.clearRect(0, 0, W, H);
 
-      // Translate to center; all subsequent coords are in logical space (±POLY_R etc.)
+      // Translate to center (shifted down by POLY_Y_OFFSET so the labelled polygon
+      // is visually centered in the canvas); all subsequent coords are logical (±POLY_R).
       ctx.save();
-      ctx.translate(W / 2, H / 2);
+      ctx.translate(W / 2, H / 2 + POLY_Y_OFFSET * sc);
       ctx.scale(sc, sc);
 
       const lw1 = 1 / sc;  // 1 CSS-pixel line in logical space
@@ -1276,7 +1285,7 @@
       const sc = canvasScale(canvas);
       const v  = slotVertex(slots, idx);
       const sx = r.left + r.width  / 2 + v.x * sc;
-      const sy = r.top  + r.height / 2 + v.y * sc;
+      const sy = r.top  + r.height / 2 + (v.y + POLY_Y_OFFSET) * sc;
       slotRemoveBtn.style.left    = (sx + VERT_R * sc - 10) + 'px';
       slotRemoveBtn.style.top     = (sy - VERT_R * sc - 10) + 'px';
       slotRemoveBtn.style.display = 'flex';
