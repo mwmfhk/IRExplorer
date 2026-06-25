@@ -226,8 +226,25 @@
       50%       { opacity: 0.2; }
     }
 
-    .icon-play::before  { content: '▶'; font-size: 0.7rem; }
-    .icon-pause::before { content: '⏸'; font-size: 0.7rem; }
+    /* CSS-drawn play/pause icons so they render identically across browsers
+       (Unicode ⏸ becomes a tall emoji glyph on iOS, causing height mismatch). */
+    .icon-play, .icon-pause {
+      display: inline-block; position: relative;
+      width: 10px; height: 10px; vertical-align: -1px;
+    }
+    .icon-play::before {
+      content: ''; position: absolute; top: 0; left: 1px;
+      width: 0; height: 0;
+      border-left: 8px solid currentColor;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+    }
+    .icon-pause::before, .icon-pause::after {
+      content: ''; position: absolute; top: 0;
+      width: 3px; height: 10px; background: currentColor;
+    }
+    .icon-pause::before { left: 1px; }
+    .icon-pause::after  { right: 1px; }
     .duration:not(:empty)::before { content: ' | '; opacity: 0.5; }
 
     .transport-desc {
@@ -698,7 +715,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 14;
+    const BUILD_NO = 15;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
