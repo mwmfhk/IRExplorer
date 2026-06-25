@@ -355,6 +355,20 @@
     .btn-export-ir:hover { background: #dcfce7; }
     .btn-export-ir:disabled { opacity: 0.35; cursor: not-allowed; }
 
+    .btn-export-select {
+      background: #f0fdf4; color: #166534;
+      border: 1px solid #bbf7d0; border-radius: 8px;
+      font-family: inherit; font-size: 0.78rem; letter-spacing: 0.05em;
+      padding: 0.6rem 1.6rem 0.6rem 0.7rem;
+      cursor: pointer; white-space: nowrap;
+      appearance: none; -webkit-appearance: none; -moz-appearance: none;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23166534' stroke-width='1.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+      background-repeat: no-repeat;
+      background-position: right 0.55rem center;
+    }
+    .btn-export-select:hover { background-color: #dcfce7; }
+    .btn-export-select:disabled { opacity: 0.35; cursor: not-allowed; }
+
     .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; min-width: 5.8rem; }
     .btn-bypass:hover { background: #e8e8e8; }
     .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
@@ -546,7 +560,8 @@
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIr">Add IR</button>
           <button class="btn-bypass" id="btnBypass">Bypass</button>
-          <button class="btn-export-ir" id="btnExportIr" disabled>Export Blended IR</button>
+          <button class="btn-export-ir" id="btnExportIr" disabled>Export IR</button>
+          <select class="btn-export-select" id="alignSelect" disabled></select>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -608,7 +623,8 @@
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIrR">Add IR</button>
           <button class="btn-bypass" id="btnBypassR">Bypass</button>
-          <button class="btn-export-ir" id="btnExportIrR" disabled>Export Blended IR</button>
+          <button class="btn-export-ir" id="btnExportIrR" disabled>Export IR</button>
+          <select class="btn-export-select" id="alignSelectR" disabled></select>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -670,7 +686,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 8;
+    const BUILD_NO = 9;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
@@ -706,6 +722,8 @@
     const btnAddIrR     = document.getElementById('btnAddIrR');
     const btnExportIr   = document.getElementById('btnExportIr');
     const btnExportIrR  = document.getElementById('btnExportIrR');
+    const alignSelect   = document.getElementById('alignSelect');
+    const alignSelectR  = document.getElementById('alignSelectR');
     const slotRemoveBtn = document.getElementById('slotRemoveBtn');
 
     // Right
@@ -1074,13 +1092,29 @@
       ctx.restore(); // undo dpr scale
     }
 
+    function rebuildAlignOptions(selectEl, slotCount) {
+      const prev = selectEl.value || 'min-phase';
+      selectEl.innerHTML = '';
+      const opts = [['none', 'No Correction'], ['peak', 'Align Peak']];
+      for (let i = 0; i < slotCount; i++) opts.push(['cross-' + i, `Cross Align ${i + 1}`]);
+      opts.push(['min-phase', 'Min-Phase']);
+      for (const [v, l] of opts) {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = l;
+        selectEl.appendChild(o);
+      }
+      selectEl.value = [...selectEl.options].some(o => o.value === prev) ? prev : 'min-phase';
+      selectEl.disabled = slotCount === 0;
+    }
     function drawPolygon() {
       _drawPolygon(blendCanvas, irSlots, blendPt);
       btnExportIr.disabled = irSlots.length === 0;
+      rebuildAlignOptions(alignSelect, irSlots.length);
     }
     function drawRightPolygon() {
       _drawPolygon(blendCanvasR, rightIrSlots, rightBlendPt);
       btnExportIrR.disabled = rightIrSlots.length === 0;
+      rebuildAlignOptions(alignSelectR, rightIrSlots.length);
     }
 
     // ── Init blend canvases ───────────────────────────────────────────────────
@@ -1495,20 +1529,162 @@
     }
 
     // ── Blended IR export ─────────────────────────────────────────────────────
-    function computeBlendedIR(slots, bp) {
-      const W    = slotWeights(slots, bp);
+    // ── IR phase alignment helpers ────────────────────────────────────────────
+    function nextPow2(n) { let p = 1; while (p < n) p <<= 1; return p; }
+    function fftRadix2(re, im, inverse) {
+      const n = re.length;
+      for (let i = 1, j = 0; i < n; i++) {
+        let bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+      }
+      for (let len = 2; len <= n; len <<= 1) {
+        const ang = (inverse ? 2 : -2) * Math.PI / len, half = len >> 1;
+        const wRe = Math.cos(ang), wIm = Math.sin(ang);
+        for (let i = 0; i < n; i += len) {
+          let cRe = 1, cIm = 0;
+          for (let k = 0; k < half; k++) {
+            const xRe = re[i+k], xIm = im[i+k];
+            const yRe = re[i+k+half] * cRe - im[i+k+half] * cIm;
+            const yIm = re[i+k+half] * cIm + im[i+k+half] * cRe;
+            re[i+k] = xRe + yRe; im[i+k] = xIm + yIm;
+            re[i+k+half] = xRe - yRe; im[i+k+half] = xIm - yIm;
+            const nRe = cRe * wRe - cIm * wIm;
+            cIm = cRe * wIm + cIm * wRe; cRe = nRe;
+          }
+        }
+      }
+      if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    }
+    function peakIdx(x) {
+      let best = 0, bestVal = 0;
+      for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a > bestVal) { bestVal = a; best = i; } }
+      return best;
+    }
+    // Returns integer lag k where ref[n] best correlates with y[n+k]. Positive k means y trails ref.
+    function crossCorrLag(ref, y) {
+      const n = nextPow2(ref.length + y.length);
+      const xRe = new Float32Array(n), xIm = new Float32Array(n);
+      const yRe = new Float32Array(n), yIm = new Float32Array(n);
+      xRe.set(ref); yRe.set(y);
+      fftRadix2(xRe, xIm, false); fftRadix2(yRe, yIm, false);
+      const cRe = new Float32Array(n), cIm = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        cRe[i] = xRe[i] * yRe[i] + xIm[i] * yIm[i];
+        cIm[i] = xIm[i] * yRe[i] - xRe[i] * yIm[i];
+      }
+      fftRadix2(cRe, cIm, true);
+      let best = 0, bestVal = -Infinity;
+      for (let i = 0; i < n; i++) if (cRe[i] > bestVal) { bestVal = cRe[i]; best = i; }
+      return best > n / 2 ? best - n : best;
+    }
+    // Real-cepstrum-based minimum-phase conversion. Returns Float32Array of length N (same as input).
+    function minPhase(x) {
+      const N = x.length;
+      const M = nextPow2(N * 4);
+      const re = new Float32Array(M), im = new Float32Array(M);
+      re.set(x);
+      fftRadix2(re, im, false);
+      const logRe = new Float32Array(M);
+      const EPS = 1e-12;
+      for (let i = 0; i < M; i++) {
+        const mag = Math.sqrt(re[i]*re[i] + im[i]*im[i]);
+        logRe[i] = Math.log(Math.max(mag, EPS));
+      }
+      // Inverse FFT → real cepstrum
+      const cRe = new Float32Array(M), cIm = new Float32Array(M);
+      cRe.set(logRe);
+      fftRadix2(cRe, cIm, true);
+      // Fold: keep [0] and [M/2], double indices 1..M/2-1, zero M/2+1..M-1
+      const fRe = new Float32Array(M), fIm = new Float32Array(M);
+      fRe[0] = cRe[0];
+      fRe[M >> 1] = cRe[M >> 1];
+      for (let i = 1; i < (M >> 1); i++) fRe[i] = 2 * cRe[i];
+      fftRadix2(fRe, fIm, false);
+      // exp(complex) → spectrum of min-phase signal
+      const outRe = new Float32Array(M), outIm = new Float32Array(M);
+      for (let i = 0; i < M; i++) {
+        const e = Math.exp(fRe[i]);
+        outRe[i] = e * Math.cos(fIm[i]);
+        outIm[i] = e * Math.sin(fIm[i]);
+      }
+      fftRadix2(outRe, outIm, true);
+      const result = new Float32Array(N);
+      for (let i = 0; i < N; i++) result[i] = outRe[i];
+      return result;
+    }
+    function extractSlotChannels(slot) {
+      const channels = [];
+      for (let c = 0; c < slot.buffer.numberOfChannels; c++) {
+        channels.push(new Float32Array(slot.buffer.getChannelData(c)));
+      }
+      return { channels };
+    }
+    function applyAlignment(slots, mode) {
+      if (mode === 'peak') {
+        const peaks = slots.map(s => peakIdx(s.buffer.getChannelData(0)));
+        const target = Math.max(...peaks);
+        return slots.map((s, i) => {
+          const lead = target - peaks[i];
+          const channels = [];
+          for (let c = 0; c < s.buffer.numberOfChannels; c++) {
+            const src = s.buffer.getChannelData(c);
+            const out = new Float32Array(src.length + lead);
+            out.set(src, lead);
+            channels.push(out);
+          }
+          return { channels };
+        });
+      }
+      if (mode.startsWith('cross-')) {
+        const refIdx = Math.max(0, Math.min(parseInt(mode.slice(6), 10), slots.length - 1));
+        const refCh = slots[refIdx].buffer.getChannelData(0);
+        const lags = slots.map((s, i) => i === refIdx ? 0 : crossCorrLag(refCh, s.buffer.getChannelData(0)));
+        const minLag = Math.min(0, ...lags);
+        const targetLead = -minLag;
+        return slots.map((s, i) => {
+          const lead = targetLead + lags[i];
+          const channels = [];
+          for (let c = 0; c < s.buffer.numberOfChannels; c++) {
+            const src = s.buffer.getChannelData(c);
+            const out = new Float32Array(src.length + lead);
+            out.set(src, lead);
+            channels.push(out);
+          }
+          return { channels };
+        });
+      }
+      if (mode === 'min-phase') {
+        return slots.map(s => {
+          const channels = [];
+          for (let c = 0; c < s.buffer.numberOfChannels; c++) {
+            channels.push(minPhase(s.buffer.getChannelData(c)));
+          }
+          return { channels };
+        });
+      }
+      return slots.map(extractSlotChannels);
+    }
+
+    function computeBlendedIR(slots, bp, correctionMode = 'min-phase') {
+      const W = slotWeights(slots, bp);
+      const aligned = applyAlignment(slots, correctionMode);
       let maxLen = 0, maxCh = 1;
-      slots.forEach(s => { maxLen = Math.max(maxLen, s.buffer.length); maxCh = Math.max(maxCh, s.buffer.numberOfChannels); });
+      aligned.forEach((a, i) => {
+        if (a.channels[0].length > maxLen) maxLen = a.channels[0].length;
+        if (a.channels.length > maxCh) maxCh = a.channels.length;
+      });
       const chData = Array.from({ length: maxCh }, () => new Float32Array(maxLen));
-      slots.forEach((slot, i) => {
-        const g = W[i] * dbToLinear(slot.normGainDb ?? 0);
+      aligned.forEach((a, i) => {
+        const g = W[i] * dbToLinear(slots[i].normGainDb ?? 0);
         for (let ch = 0; ch < maxCh; ch++) {
-          const src = slot.buffer.getChannelData(Math.min(ch, slot.buffer.numberOfChannels - 1));
+          const src = a.channels[Math.min(ch, a.channels.length - 1)];
           const dst = chData[ch];
           for (let n = 0; n < src.length; n++) dst[n] += src[n] * g;
         }
       });
-      // Normalize to 0 dBFS — standard level; waveform-based normGainDb handles level on load
+      // Normalize to 0 dBFS
       let peakRaw = 0;
       for (let ch = 0; ch < maxCh; ch++) {
         const d = chData[ch];
@@ -1667,9 +1843,9 @@
       return new Blob([ab], { type: 'audio/wav' });
     }
 
-    async function exportBlendedIR(slots, bp, suggestedName, statusFn) {
+    async function exportBlendedIR(slots, bp, suggestedName, statusFn, mode = 'min-phase') {
       if (slots.length === 0) return;
-      const blended = computeBlendedIR(slots, bp);
+      const blended = computeBlendedIR(slots, bp, mode);
       const blob    = audioBufferToWav(blended);
       try {
         const handle   = await window.showSaveFilePicker({
@@ -1686,10 +1862,10 @@
     }
 
     btnExportIr.addEventListener('click', () =>
-      exportBlendedIR(irSlots, blendPt, 'blended-ir-rhythm.wav', setStatus)
+      exportBlendedIR(irSlots, blendPt, 'blended-ir-rhythm.wav', setStatus, alignSelect.value)
     );
     btnExportIrR.addEventListener('click', () =>
-      exportBlendedIR(rightIrSlots, rightBlendPt, 'blended-ir-lead.wav', setRightStatus)
+      exportBlendedIR(rightIrSlots, rightBlendPt, 'blended-ir-lead.wav', setRightStatus, alignSelectR.value)
     );
 
     // ── Unified document listeners ─────────────────────────────────────────────
