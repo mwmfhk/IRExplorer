@@ -560,8 +560,8 @@
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIr">Add IR</button>
           <button class="btn-bypass" id="btnBypass">Bypass</button>
-          <button class="btn-export-ir" id="btnExportIr" disabled>Export IR</button>
           <select class="btn-export-select" id="alignSelect" disabled></select>
+          <button class="btn-export-ir" id="btnExportIr" disabled>Export IR</button>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -623,8 +623,8 @@
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIrR">Add IR</button>
           <button class="btn-bypass" id="btnBypassR">Bypass</button>
-          <button class="btn-export-ir" id="btnExportIrR" disabled>Export IR</button>
           <select class="btn-export-select" id="alignSelectR" disabled></select>
+          <button class="btn-export-ir" id="btnExportIrR" disabled>Export IR</button>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -686,7 +686,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 9;
+    const BUILD_NO = 10;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
@@ -1092,8 +1092,38 @@
       ctx.restore(); // undo dpr scale
     }
 
-    function rebuildAlignOptions(selectEl, slotCount) {
-      const prev = selectEl.value || 'min-phase';
+    // ── Per-side phase-alignment state ────────────────────────────────────────
+    let leftAlignMode = 'min-phase', rightAlignMode = 'min-phase';
+
+    function effectiveIRBuffer(slot) { return slot.alignedBuffer || slot.buffer; }
+
+    // Compute aligned channel data per slot, wrap as AudioBuffers, and (if playing)
+    // swap into the corresponding live ConvolverNodes so the change is heard immediately.
+    function syncConvolvers(side) {
+      const slots = side === 'left' ? irSlots : rightIrSlots;
+      const mode  = side === 'left' ? leftAlignMode : rightAlignMode;
+      if (slots.length > 0) {
+        const ctx = getAudioCtx();
+        const aligned = applyAlignment(slots, mode);
+        slots.forEach((slot, i) => {
+          const ch = aligned[i].channels;
+          const buf = ctx.createBuffer(ch.length, ch[0].length, ctx.sampleRate);
+          for (let c = 0; c < ch.length; c++) buf.getChannelData(c).set(ch[c]);
+          slot.alignedBuffer = buf;
+        });
+      }
+      if (isPlaying) {
+        const convs = side === 'left' ? slotConvs : rightSlotConvs;
+        convs.forEach((conv, i) => {
+          if (conv && slots[i] && slots[i].alignedBuffer) conv.buffer = slots[i].alignedBuffer;
+        });
+      }
+    }
+
+    function rebuildAlignOptions(side) {
+      const selectEl  = side === 'left' ? alignSelect : alignSelectR;
+      const slotCount = (side === 'left' ? irSlots : rightIrSlots).length;
+      const currentMode = side === 'left' ? leftAlignMode : rightAlignMode;
       selectEl.innerHTML = '';
       const opts = [['none', 'No Correction'], ['peak', 'Align Peak']];
       for (let i = 0; i < slotCount; i++) opts.push(['cross-' + i, `Cross Align ${i + 1}`]);
@@ -1103,18 +1133,22 @@
         o.value = v; o.textContent = l;
         selectEl.appendChild(o);
       }
-      selectEl.value = [...selectEl.options].some(o => o.value === prev) ? prev : 'min-phase';
+      const valid = [...selectEl.options].some(o => o.value === currentMode);
+      if (!valid) {
+        if (side === 'left') leftAlignMode = 'min-phase'; else rightAlignMode = 'min-phase';
+      }
+      selectEl.value = valid ? currentMode : 'min-phase';
       selectEl.disabled = slotCount === 0;
     }
     function drawPolygon() {
       _drawPolygon(blendCanvas, irSlots, blendPt);
       btnExportIr.disabled = irSlots.length === 0;
-      rebuildAlignOptions(alignSelect, irSlots.length);
+      rebuildAlignOptions('left');
     }
     function drawRightPolygon() {
       _drawPolygon(blendCanvasR, rightIrSlots, rightBlendPt);
       btnExportIrR.disabled = rightIrSlots.length === 0;
-      rebuildAlignOptions(alignSelectR, rightIrSlots.length);
+      rebuildAlignOptions('right');
     }
 
     // ── Init blend canvases ───────────────────────────────────────────────────
@@ -1250,13 +1284,13 @@
         rightIrSlots.splice(removedIdx, 1);
         liveRemoveRightIrSlot(removedIdx);
         rightBlendPt = constrainBlend(rightBlendPt.x, rightBlendPt.y);
-        drawRightPolygon();
+        drawRightPolygon(); syncConvolvers('right');
         setRightStatus(`Removed slot ${removedIdx + 1}.`);
       } else {
         irSlots.splice(removedIdx, 1);
         liveRemoveIrSlot(removedIdx);
         blendPt = constrainBlend(blendPt.x, blendPt.y);
-        drawPolygon();
+        drawPolygon(); syncConvolvers('left');
         setStatus(`Removed slot ${removedIdx + 1}.`);
       }
       hoveredSlotIdx = -1;
@@ -1382,11 +1416,11 @@
         if (pendingSlot !== null) {
           const idx = pendingSlot;
           irSlots[idx] = slot; setStatus(`Slot ${idx+1} replaced.`);
-          pendingSlot = null; drawPolygon();
+          pendingSlot = null; drawPolygon(); syncConvolvers('left');
           if (isPlaying) liveReplaceIrSlot(idx);
         } else {
           irSlots.push(slot); setStatus(`Slot ${irSlots.length}: ${file.name}`);
-          pendingSlot = null; drawPolygon();
+          pendingSlot = null; drawPolygon(); syncConvolvers('left');
           if (isPlaying) liveAddIrSlot(irSlots.length - 1);
         }
       } catch { setStatus('Failed to decode IR.'); pendingSlot = null; }
@@ -1404,11 +1438,11 @@
         if (rightPendingSlot !== null) {
           const idx = rightPendingSlot;
           rightIrSlots[idx] = slot; setRightStatus(`Slot ${idx+1} replaced.`);
-          rightPendingSlot = null; drawRightPolygon();
+          rightPendingSlot = null; drawRightPolygon(); syncConvolvers('right');
           if (isPlaying && rightAudioBuffer) liveReplaceRightIrSlot(idx);
         } else {
           rightIrSlots.push(slot); setRightStatus(`Slot ${rightIrSlots.length}: ${file.name}`);
-          rightPendingSlot = null; drawRightPolygon();
+          rightPendingSlot = null; drawRightPolygon(); syncConvolvers('right');
           if (isPlaying && rightAudioBuffer) liveAddRightIrSlot(rightIrSlots.length - 1);
         }
       } catch { setRightStatus('Failed to decode IR.'); rightPendingSlot = null; }
@@ -1445,7 +1479,7 @@
         wetMaster.gain.value = irBypassed ? 0 : 1;
         if (!irBypassed) dryGain.gain.value = 0;
       }
-      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       const sg   = ctx.createGain();
       sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
       slotConvs[idx] = conv; slotGains[idx] = sg;
@@ -1459,7 +1493,7 @@
         try { sampleGainNode.disconnect(slotConvs[idx]); } catch {}
         try { slotConvs[idx].disconnect(slotGains[idx]); } catch {}
       }
-      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       sampleGainNode.connect(conv); conv.connect(slotGains[idx]);
       slotConvs[idx] = conv;
       updateBlendGains();
@@ -1493,7 +1527,7 @@
         rightWetMaster.gain.value = rightIrBypassed ? 0 : 1;
         if (!rightIrBypassed) rightDryGain.gain.value = 0;
       }
-      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       const sg   = ctx.createGain();
       rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
       rightSlotConvs[idx] = conv; rightSlotGains[idx] = sg;
@@ -1507,7 +1541,7 @@
         try { rightSampleGainNode.disconnect(rightSlotConvs[idx]); } catch {}
         try { rightSlotConvs[idx].disconnect(rightSlotGains[idx]); } catch {}
       }
-      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = slot.buffer;
+      const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       rightSampleGainNode.connect(conv); conv.connect(rightSlotGains[idx]);
       rightSlotConvs[idx] = conv;
       updateRightBlendGains();
@@ -1867,6 +1901,12 @@
     btnExportIrR.addEventListener('click', () =>
       exportBlendedIR(rightIrSlots, rightBlendPt, 'blended-ir-lead.wav', setRightStatus, alignSelectR.value)
     );
+    alignSelect.addEventListener('change', () => {
+      leftAlignMode = alignSelect.value; syncConvolvers('left');
+    });
+    alignSelectR.addEventListener('change', () => {
+      rightAlignMode = alignSelectR.value; syncConvolvers('right');
+    });
 
     // ── Unified document listeners ─────────────────────────────────────────────
     document.addEventListener('pointermove', e => {
@@ -2074,6 +2114,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       slotGains = []; slotConvs = [];
       if (hasIR) {
+        syncConvolvers('left'); // ensures each slot.alignedBuffer is fresh
         wetMaster            = ctx.createGain(); wetMaster.gain.value = irBypassed ? 0 : 1;
         wetMaster.connect(reverbDry); wetMaster.connect(reverbWet);
         const W = slotWeights(irSlots, blendPt);
@@ -2083,7 +2124,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
           slotGains[i] = sg;
           const conv = ctx.createConvolver();
           conv.normalize = false;
-          conv.buffer = slot.buffer;
+          conv.buffer = effectiveIRBuffer(slot);
           sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
           slotConvs[i] = conv;
         });
@@ -2172,6 +2213,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       rightReverbWet.connect(rightReverbNode); rightReverbNode.connect(rightMasterBus);
 
       if (hasIR) {
+        syncConvolvers('right'); // ensures each slot.alignedBuffer is fresh
         rightWetMaster            = ctx.createGain(); rightWetMaster.gain.value = rightIrBypassed ? 0 : 1;
         rightWetMaster.connect(rightReverbDry); rightWetMaster.connect(rightReverbWet);
         const W = slotWeights(rightIrSlots, rightBlendPt);
@@ -2181,7 +2223,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
           rightSlotGains[i] = sg;
           const conv = ctx.createConvolver();
           conv.normalize = false;
-          conv.buffer = slot.buffer;
+          conv.buffer = effectiveIRBuffer(slot);
           rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
           rightSlotConvs[i] = conv;
         });
@@ -3214,8 +3256,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
         const buffer = await loadBuf(x.buf);
         return { name: x.name, buffer, normGainDb: x.normGainDb ?? computeNormGainDb(buffer) };
       }));
-      blendPt = s.blendPt;           drawPolygon();
-      rightBlendPt = s.rightBlendPt; drawRightPolygon();
+      blendPt = s.blendPt;           drawPolygon();      syncConvolvers('left');
+      rightBlendPt = s.rightBlendPt; drawRightPolygon(); syncConvolvers('right');
 
       reverbMix = s.reverbMix ?? 0; inputGainDb = s.inputGainDb ?? 0;
       irBypassed = s.irBypassed ?? false;
