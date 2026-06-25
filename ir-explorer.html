@@ -686,7 +686,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 11;
+    const BUILD_NO = 12;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
@@ -1093,7 +1093,7 @@
     }
 
     // ── Per-side phase-alignment state ────────────────────────────────────────
-    let leftAlignMode = 'min-phase', rightAlignMode = 'min-phase';
+    let leftAlignMode = 'none', rightAlignMode = 'none';
 
     function effectiveIRBuffer(slot) { return slot.alignedBuffer || slot.buffer; }
 
@@ -1135,9 +1135,9 @@
       }
       const valid = [...selectEl.options].some(o => o.value === currentMode);
       if (!valid) {
-        if (side === 'left') leftAlignMode = 'min-phase'; else rightAlignMode = 'min-phase';
+        if (side === 'left') leftAlignMode = 'none'; else rightAlignMode = 'none';
       }
-      selectEl.value = valid ? currentMode : 'min-phase';
+      selectEl.value = valid ? currentMode : 'none';
       selectEl.disabled = slotCount === 0;
     }
     function drawPolygon() {
@@ -1701,7 +1701,7 @@
       return slots.map(extractSlotChannels);
     }
 
-    function computeBlendedIR(slots, bp, correctionMode = 'min-phase') {
+    function computeBlendedIR(slots, bp, correctionMode = 'none') {
       const W = slotWeights(slots, bp);
       const aligned = applyAlignment(slots, correctionMode);
       let maxLen = 0, maxCh = 1;
@@ -1877,7 +1877,7 @@
       return new Blob([ab], { type: 'audio/wav' });
     }
 
-    async function exportBlendedIR(slots, bp, suggestedName, statusFn, mode = 'min-phase') {
+    async function exportBlendedIR(slots, bp, suggestedName, statusFn, mode = 'none') {
       if (slots.length === 0) return;
       const blended = computeBlendedIR(slots, bp, mode);
       const blob    = audioBufferToWav(blended);
