@@ -330,6 +330,12 @@
       display: flex; align-items: center; gap: 0.6rem;
     }
 
+    .phase-row { display: flex; align-items: center; gap: 0.6rem; }
+    .phase-label {
+      font-size: 0.65rem; letter-spacing: 0.18em;
+      text-transform: uppercase; color: #aaa;
+    }
+
     .blend-hint { font-size: 0.68rem; color: #777; letter-spacing: 0.02em; margin-left: auto; }
 
     .knob-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
@@ -557,10 +563,13 @@
 
       <div class="blend-section">
         <canvas class="blend-canvas" id="blendCanvas"></canvas>
+        <div class="phase-row">
+          <span class="phase-label">Phase Correction :</span>
+          <select class="btn-export-select" id="alignSelect" disabled></select>
+        </div>
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIr">Add IR</button>
           <button class="btn-bypass" id="btnBypass">Bypass</button>
-          <select class="btn-export-select" id="alignSelect" disabled></select>
           <button class="btn-export-ir" id="btnExportIr" disabled>Export IR</button>
         </div>
         <div class="post-divider">
@@ -620,10 +629,13 @@
 
       <div class="blend-section">
         <canvas class="blend-canvas" id="blendCanvasR"></canvas>
+        <div class="phase-row">
+          <span class="phase-label">Phase Correction :</span>
+          <select class="btn-export-select" id="alignSelectR" disabled></select>
+        </div>
         <div class="blend-controls">
           <button class="btn-add-ir" id="btnAddIrR">Add IR</button>
           <button class="btn-bypass" id="btnBypassR">Bypass</button>
-          <select class="btn-export-select" id="alignSelectR" disabled></select>
           <button class="btn-export-ir" id="btnExportIrR" disabled>Export IR</button>
         </div>
         <div class="post-divider">
@@ -686,7 +698,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 12;
+    const BUILD_NO = 13;
     document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
     document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
 
