@@ -1001,13 +1001,13 @@ registerProcessor('recorder-processor', RecorderProcessor);</code></pre>
   <h2>Section 09 — iOS</h2>
   <h3>Web Audio Session Category Unlock</h3>
 
-  <p>The single weirdest bug in this project. On iOS Safari, a freshly created <code>AudioContext</code> is silently assigned to the <strong>"ambient" audio session category</strong>. Calls to <code>ctx.resume()</code> succeed. <code>ctx.state</code> returns <code>'running'</code>. <code>ctx.currentTime</code> advances. The media volume indicator appears in the status bar. <strong>And no sound comes out of the speaker.</strong></p>
+  <p>On iOS Safari, a freshly created <code>AudioContext</code> is silently assigned to the <strong>"ambient" audio session category</strong>. <code>ctx.resume()</code> succeeds, <code>ctx.state</code> returns <code>'running'</code>, <code>ctx.currentTime</code> advances, and the media volume indicator appears in the status bar — but no sound comes out of the speaker.</p>
 
-  <p>The standard fixes (resume in a user gesture; play a 1-sample silent buffer to "unlock") don't help. They're solving a different problem — actually starting the context. The <em>session category</em> is independent.</p>
+  <p>The standard unlock tricks (resume in a user gesture; play a 1-sample silent buffer) address whether the context is <em>running</em>, not which session category it's in. The session category is independent.</p>
 
   <p>The fix: <strong>play an HTML5 <code>&lt;audio&gt;</code> element first</strong>. HTML5 audio elements are bound to the "media playback" category — and once that category is active for the page, the AudioContext inherits it.</p>
 
-  <p>Implementation: build a short silent WAV as a data URL, wrap it in an <code>Audio</code> element, play it (looped) in the first user gesture, and keep the element alive for the page's lifetime so the elevated session isn't released:</p>
+  <p>Build a short silent WAV as a data URL, wrap it in an <code>Audio</code> element, play it (looped) in the first user gesture, and keep the element alive for the page's lifetime so the elevated session isn't released:</p>
 
   <pre><code>let iosSilenceAudio = null;
 function unlockAndResume() {
@@ -1050,7 +1050,6 @@ function unlockAndResume() {
     <div class="caption">iOS routes Web Audio to silent unless an HTML5 audio element has elevated the page's session category.</div>
   </div>
 
-  <p>This was diagnosed by building a 10-button test page (<code>ios-audio-test.html</code>) that exercised every Web Audio API path in isolation — plain oscillator, oscillator after <code>resume()</code>, AudioBufferSource, decoded WAV, fresh AudioContext per click, convolver, EQ chain. <em>Every single Web Audio test produced no sound on iOS.</em> Tests 9 (HTML5 audio) and 10 (HTML5 audio then Web Audio osc) both produced sound. That confirmed: the HTML5 element elevates the session, and Web Audio inherits.</p>
 </section>
 
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
@@ -1058,14 +1057,14 @@ function unlockAndResume() {
   <h2>Section 10 — iOS</h2>
   <h3>Sample-Rate Mismatch Handling</h3>
 
-  <p>A session saved on a Mac (44.1 kHz AudioContext) and reopened on an iPhone (48 kHz AudioContext) used to error out:</p>
+  <p>A session saved on a Mac (44.1 kHz AudioContext) loaded on an iPhone (48 kHz AudioContext) hits a strict sample-rate check:</p>
   <div class="math">
     Buffer sample rate does not match the context's sample rate
   </div>
 
-  <p>iOS Safari is stricter than desktop Safari about sample-rate matching for <code>ConvolverNode.buffer</code> and <code>AudioBufferSourceNode.buffer</code>. The natural workaround — using <code>OfflineAudioContext</code> to resample — fails the same way: iOS also rejects mismatched buffers there.</p>
+  <p>iOS Safari enforces sample-rate matching on <code>ConvolverNode.buffer</code> and <code>AudioBufferSourceNode.buffer</code> — and <code>OfflineAudioContext</code> enforces the same check, so it can't be used to resample around the problem.</p>
 
-  <p>The robust fix: <strong>pure-JS linear interpolation resampling</strong>. Read the raw <code>Float32Array</code> samples, resample to the destination context's rate, then create the AudioBuffer directly at that rate. No Web Audio API involved in the resample step, so iOS has nothing to reject.</p>
+  <p>The fix: <strong>pure-JS linear interpolation resampling</strong>. Read the raw <code>Float32Array</code> samples, resample to the destination context's rate, then create the AudioBuffer directly at that rate. No Web Audio API involved in the resample step, so the sample-rate check never fires.</p>
 
   <pre><code>function jsResample(input, inRate, outRate) {
   if (inRate === outRate) return input;
@@ -1133,9 +1132,9 @@ function unlockAndResume() {
   <h2>Section 11 — iOS</h2>
   <h3>Pointer Events for Unified Mouse/Touch Dragging</h3>
 
-  <p>The original implementation used <code>mousedown</code> / <code>mousemove</code> / <code>mouseup</code> for every drag widget — gain knobs, EQ knobs, the blend point, the waveform loop handles, the calibration drag line. On iOS this means <strong>nothing drags</strong> — touchscreens don't fire mouse events during a drag.</p>
+  <p>Every drag widget — gain knobs, EQ knobs, the blend point, the waveform loop handles, the calibration drag line — needs to work with both mouse and touch. iOS touchscreens don't fire <code>mousedown</code> / <code>mousemove</code> / <code>mouseup</code> during a drag, so a mouse-only handler is dead on iPhone. Parallel <code>touchstart</code> / <code>touchmove</code> / <code>touchend</code> handlers would work, but each event's <code>e.touches[0]</code> shape differs from <code>MouseEvent</code> and every interaction would need to be wired twice.</p>
 
-  <p>You could add a parallel set of <code>touchstart</code> / <code>touchmove</code> / <code>touchend</code> handlers, but each event's <code>e.touches[0]</code> shape differs and you'd be writing every interaction twice. The cleaner answer is the <strong>Pointer Events API</strong>: one set of events that unify mouse, touch, and stylus into a single normalized stream.</p>
+  <p>The <strong>Pointer Events API</strong> unifies mouse, touch, and stylus into a single normalized event stream:</p>
 
   <div class="diagram">
     <svg viewBox="0 0 640 240" xmlns="http://www.w3.org/2000/svg">
@@ -1178,16 +1177,16 @@ function unlockAndResume() {
     <div class="caption">Pointer Events unify both input modalities under one API.</div>
   </div>
 
-  <p>The migration was a mechanical find-and-replace — every <code>'mousedown'</code> became <code>'pointerdown'</code>, <code>'mousemove'</code> became <code>'pointermove'</code>, <code>'mouseup'</code> became <code>'pointerup'</code>. The event objects have the same <code>clientX</code> / <code>clientY</code> properties so no other code had to change.</p>
+  <p>The handler API is identical to mouse events — <code>'pointerdown'</code> / <code>'pointermove'</code> / <code>'pointerup'</code> in place of the <code>'mouse*'</code> equivalents, with the same <code>clientX</code> / <code>clientY</code> properties on the event object.</p>
 
-  <p>One small extra: iOS interprets touch drags on a normal element as a request to scroll/zoom the page. To stop that, every draggable element needs <code>touch-action: none</code> in CSS:</p>
+  <p>iOS interprets touch drags on a normal element as a request to scroll or pinch-zoom the page. To suppress that and let JS receive the gesture, every draggable element needs <code>touch-action: none</code> in CSS:</p>
 
   <pre><code>.ir-knob, .input-knob, .norm-knob-canvas,
 .blend-canvas, .cal-result-canvas, .region-handle {
   touch-action: none;
 }</code></pre>
 
-  <p>This tells the browser "don't try to scroll or pinch-zoom on this element; pass touch through to JS instead". Combined with the pointer-event handlers, all drag widgets work identically on Mac, Windows, iPhone, and iPad with no code branching.</p>
+  <p>Combined with pointer-event handlers, all drag widgets work identically on Mac, Windows, iPhone, and iPad with no code branching.</p>
 </section>
 
 <footer>
