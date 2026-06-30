@@ -449,6 +449,9 @@
     .build-no { font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: #aaa; }
     .build-no-mobile  { display: none; margin-left: 0.5rem; }
     .build-no-desktop { display: block; margin-top: auto; }
+    .build-no .sep      { opacity: 0.5; margin: 0 0.3rem; }
+    .build-no .tech-link { color: #aaa; text-decoration: none; border-bottom: 1px dotted #ccc; }
+    .build-no .tech-link:hover { color: #f59e0b; border-bottom-color: #f59e0b; }
 
     /* ── Mobile / cramped-desktop ─────────────────────────────────────────────
        Triggers below 1656px since the desktop layout needs:
@@ -715,9 +718,11 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 15;
-    document.getElementById('buildNoMobile').textContent  = 'build ' + BUILD_NO;
-    document.getElementById('buildNoDesktop').textContent = 'build ' + BUILD_NO;
+    const BUILD_NO = 16;
+    const buildHtml = 'build ' + BUILD_NO +
+      ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
+    document.getElementById('buildNoMobile').innerHTML  = buildHtml;
+    document.getElementById('buildNoDesktop').innerHTML = buildHtml;
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
     // Left
