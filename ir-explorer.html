@@ -495,7 +495,7 @@
       .sidebar-notes.open { display: flex; height: 70vh; }
 
       .build-no-desktop { display: none; }
-      .build-no-mobile  { display: inline; }
+      .build-no-mobile  { display: block; margin-left: 0; margin-top: 0.15rem; }
       .sidebar-notes .notes-textarea {
         width: 100%; min-height: 0; flex: 1;
         font-family: 'SF Mono', 'Fira Code', monospace;
@@ -720,7 +720,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 17;
+    const BUILD_NO = 18;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
