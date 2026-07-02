@@ -720,7 +720,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 18;
+    const BUILD_NO = 19;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1922,21 +1922,66 @@
       return new Blob([ab], { type: 'audio/wav' });
     }
 
+    // ── File save/open helpers (with iOS Safari fallback) ────────────────────
+    // The modern File System Access API (showSaveFilePicker / showOpenFilePicker)
+    // only exists in Chromium browsers. iOS Safari and Firefox need the classic
+    // <a download> and <input type="file"> fallback.
+    function downloadBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    }
+    async function pickFileToSave(suggestedName, types) {
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({ suggestedName, types });
+          return { name: handle.name, write: async (blob) => {
+            const w = await handle.createWritable();
+            await w.write(blob);
+            await w.close();
+          }};
+        } catch (e) { if (e.name === 'AbortError') return null; throw e; }
+      }
+      // Fallback: trigger a download via a hidden anchor
+      return { name: suggestedName, write: async (blob) => downloadBlob(blob, suggestedName) };
+    }
+    async function pickFileToOpen(types) {
+      if (window.showOpenFilePicker) {
+        try {
+          const [handle] = await window.showOpenFilePicker({ types });
+          return await handle.getFile();
+        } catch (e) { if (e.name === 'AbortError') return null; throw e; }
+      }
+      // Fallback: hidden <input type="file">
+      const accept = types.flatMap(t => Object.values(t.accept).flat()).join(',');
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = accept; input.style.display = 'none';
+        input.onchange = () => {
+          const f = input.files[0] || null;
+          document.body.removeChild(input);
+          resolve(f);
+        };
+        document.body.appendChild(input);
+        input.click();
+      });
+    }
+
     async function exportBlendedIR(slots, bp, suggestedName, statusFn, mode = 'none') {
       if (slots.length === 0) return;
-      const blended = computeBlendedIR(slots, bp, mode);
-      const blob    = audioBufferToWav(blended);
+      const writer = await pickFileToSave(suggestedName,
+        [{ description: 'WAV Audio', accept: { 'audio/wav': ['.wav'] } }]);
+      if (!writer) return;
       try {
-        const handle   = await window.showSaveFilePicker({
-          suggestedName,
-          types: [{ description: 'WAV Audio', accept: { 'audio/wav': ['.wav'] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(await blob.arrayBuffer());
-        await writable.close();
-        statusFn(`Exported ${handle.name}.`);
+        const blended = computeBlendedIR(slots, bp, mode);
+        const blob    = audioBufferToWav(blended);
+        await writer.write(blob);
+        statusFn(`Exported ${writer.name}.`);
       } catch (e) {
-        if (e.name !== 'AbortError') statusFn('Export failed: ' + e.message);
+        statusFn('Export failed: ' + e.message);
       }
     }
 
@@ -3194,16 +3239,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     async function saveSession() {
       // Open picker first — browser drops the user-gesture token after any await
-      let handle;
-      try {
-        handle = await window.showSaveFilePicker({
-          suggestedName: 'ir-session.irz',
-          types: [{ description: 'IR Session', accept: { 'application/zip': ['.irz'] } }],
-        });
-      } catch (e) {
-        if (e.name !== 'AbortError') setStatus('Save failed: ' + e.message);
-        return;
-      }
+      const writer = await pickFileToSave('ir-session.irz',
+        [{ description: 'IR Session', accept: { 'application/zip': ['.irz'] } }]);
+      if (!writer) return;
 
       try {
         const zip = new JSZip();
@@ -3248,10 +3286,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
         zip.file('session.json', JSON.stringify(meta));
         setStatus('Compressing…');
         const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-        const writable = await handle.createWritable();
-        await writable.write(blob);
-        await writable.close();
-        setStatus(`Saved ${handle.name}.`);
+        await writer.write(blob);
+        setStatus(`Saved ${writer.name}.`);
       } catch (e) {
         setStatus('Save failed: ' + e.message);
       }
@@ -3360,16 +3396,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     async function loadSession() {
-      let file;
-      try {
-        const [handle] = await window.showOpenFilePicker({
-          types: [{ description: 'IR Session', accept: { 'application/zip': ['.irz'], 'application/json': ['.json'] } }],
-        });
-        file = await handle.getFile();
-      } catch (e) {
-        if (e.name !== 'AbortError') setStatus('Load failed: ' + e.message);
-        return;
-      }
+      const file = await pickFileToOpen(
+        [{ description: 'IR Session', accept: { 'application/zip': ['.irz'], 'application/json': ['.json'] } }]);
+      if (!file) return;
       let s, zip;
       if (file.name.endsWith('.json')) {
         s = JSON.parse(await file.text());
