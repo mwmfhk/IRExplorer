@@ -195,6 +195,10 @@
     <li><a href="#resample">Sample-Rate Mismatch Handling</a></li>
     <li><a href="#pointer">Pointer Events for Unified Mouse/Touch Dragging</a></li>
   </ol>
+  <div class="toc-group">Data Format</div>
+  <ol start="12">
+    <li><a href="#fileformat">Session File Format (.irz)</a></li>
+  </ol>
 </nav>
 
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
@@ -1187,6 +1191,103 @@ function unlockAndResume() {
 }</code></pre>
 
   <p>Combined with pointer-event handlers, all drag widgets work identically on Mac, Windows, iPhone, and iPad with no code branching.</p>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<section id="fileformat">
+  <h2>Section 12 — Data format</h2>
+  <h3>Session File Format (.irz)</h3>
+
+  <p>Save Session produces a single <code>.irz</code> file containing everything needed to reconstruct the session — both recordings, every loaded IR, all knob positions, blend points, calibration state, and notes. The file is a <strong>standard ZIP archive</strong> with a custom extension; you can rename it to <code>.zip</code> and open it with any archive tool.</p>
+
+  <h4>Archive contents</h4>
+
+  <div class="diagram">
+    <svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="11" fill="#333">
+        <!-- outer archive frame -->
+        <rect x="20" y="20" width="600" height="280" fill="#fff" stroke="#f59e0b" stroke-width="2" rx="6"/>
+        <text x="35" y="42" font-weight="bold" font-size="12">ir-session.irz</text>
+        <text x="180" y="42" font-size="9" fill="#777">(ZIP · DEFLATE compressed)</text>
+        <line x1="35" y1="52" x2="605" y2="52" stroke="#eee"/>
+
+        <!-- session.json -->
+        <text x="45" y="80"  font-family="SF Mono, monospace" fill="#92400e">session.json</text>
+        <text x="245" y="80" font-size="10" fill="#666">metadata + per-file descriptors</text>
+
+        <!-- audio_left.mp3 -->
+        <text x="45" y="108" fill="#92400e">audio_left.mp3</text>
+        <text x="245" y="108" font-size="10" fill="#666">rhythm recording · 320 kbps MP3</text>
+
+        <!-- audio_right.mp3 -->
+        <text x="45" y="130" fill="#92400e">audio_right.mp3</text>
+        <text x="245" y="130" font-size="10" fill="#666">raw lead recording · 320 kbps MP3</text>
+
+        <!-- IR files left -->
+        <text x="45" y="160" fill="#92400e">ir_left_0_ch0.f32</text>
+        <text x="245" y="160" font-size="10" fill="#666">rhythm IR slot 1 · raw 32-bit float PCM</text>
+
+        <text x="45" y="180" fill="#92400e">ir_left_1_ch0.f32</text>
+        <text x="245" y="180" font-size="10" fill="#666">rhythm IR slot 2 · raw 32-bit float PCM</text>
+
+        <text x="45" y="200" fill="#aaa" font-size="10">⋮</text>
+
+        <!-- IR files right -->
+        <text x="45" y="228" fill="#92400e">ir_right_0_ch0.f32</text>
+        <text x="245" y="228" font-size="10" fill="#666">lead IR slot 1 · raw 32-bit float PCM</text>
+
+        <text x="45" y="250" fill="#aaa" font-size="10">⋮</text>
+
+        <!-- cal_pcm -->
+        <text x="45" y="278" fill="#92400e">cal_pcm.f32</text>
+        <text x="245" y="278" font-size="10" fill="#666">calibration display data · downsampled to 4 kHz</text>
+      </g>
+    </svg>
+    <div class="caption">Everything the app needs to fully restore a session lives in one zip.</div>
+  </div>
+
+  <h4>Why MP3 for recordings and raw f32 for IRs</h4>
+
+  <p>The two file types capture very different content and get very different treatment.</p>
+
+  <p><strong>Recordings</strong> — the DI'd guitar performances — are stored as <strong>320 kbps MP3</strong>. At that bitrate MP3 is perceptually transparent for guitar content, and the ~10× size reduction (versus raw 32-bit float) is meaningful when sessions include 30+ seconds of stereo audio. LAME introduces a fixed encoder delay of <strong>576 samples</strong> at the start of the decoded stream; the loader knows this and strips exactly that many samples on decode. The original length <code>n</code> is stored in the descriptor to guarantee sample-exact reconstruction.</p>
+
+  <p><strong>Impulse responses</strong> are stored as <strong>raw 32-bit float PCM, one file per channel</strong> (<code>_ch0.f32</code>, <code>_ch1.f32</code>). An IR's magnitude spectrum is <em>directly</em> what shapes the guitar tone — any lossy encoding would add audible coloration on top of the cabinet. Raw f32 is compact enough (a 2000-sample mono IR is 8 KB), lossless, and requires no decoding step at all: just read the bytes into a <code>Float32Array</code>.</p>
+
+  <h4>The descriptor pattern</h4>
+
+  <p>Every audio entry in <code>session.json</code> carries a small descriptor that tells the loader everything it needs to reconstruct the buffer:</p>
+
+  <pre><code>meta.audioBuffer = { prefix: 'audio_left',  fmt: 'mp3', n: 213840, sr: 48000 };
+meta.rightIrSlots = [{
+  name: 'Marshall_V30.wav', normGainDb: 1.2,
+  buf: { prefix: 'ir_right_0', fmt: 'f32', n: 2048, sr: 44100, channels: 1 }
+}, ...];</code></pre>
+
+  <p>Fields:</p>
+  <ul>
+    <li><code>prefix</code> — base filename inside the zip (append <code>.mp3</code> or <code>_ch{c}.f32</code>)</li>
+    <li><code>fmt</code> — <code>'mp3'</code> or <code>'f32'</code></li>
+    <li><code>n</code> — original sample count (for MP3, this is used to strip encoder delay + tail padding on decode)</li>
+    <li><code>sr</code> — original sample rate (44.1 or 48 kHz typically); the loader resamples on the fly to the destination context's rate</li>
+    <li><code>channels</code> — number of channels (only present for f32; MP3 files store it internally)</li>
+  </ul>
+
+  <h4>Cross-device portability</h4>
+
+  <p>A session saved on a Mac at 44.1 kHz and reopened on an iPhone at 48 kHz just works — the descriptor's <code>sr</code> field lets the loader detect the mismatch and pipe every buffer through the linear-interpolation resampler (see Section 10) before creating the AudioBuffer. No sample-rate errors, no config to fiddle with.</p>
+
+  <h4>Sizes in practice</h4>
+
+  <ul>
+    <li>Empty session (parameters only): <strong>~500 bytes</strong></li>
+    <li>30-second rhythm + 30-second lead + 3 IR slots per panel: <strong>~2 MB</strong> — dominated by the two MP3 files (~0.9 MB each) with IRs and metadata rounding out the rest</li>
+    <li>Same session with lossless recordings would run ~10× larger</li>
+  </ul>
+
+  <div class="note">
+    <strong>Legacy JSON path.</strong> Pre-<em>v2</em> sessions were stored as a single <code>.json</code> file with all audio inlined as base64 strings. That format is still supported on load (via a <code>decBuf</code> code path), but the zip format is 3–4× smaller and much faster to parse. The version field in <code>session.json</code> lets the loader route to the appropriate path.
+  </div>
 </section>
 
 <footer>
