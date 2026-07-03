@@ -839,7 +839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 28;
+    const BUILD_NO = 29;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -4249,8 +4249,13 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     chkAutoGain.addEventListener('change', () => {
       autoGainEnabled = chkAutoGain.checked;
       // Turning it on retro-actively levels the currently-loaded recordings.
-      // Turning it off just leaves the current gain settings alone.
-      if (autoGainEnabled) autoLevelMatchedPair();
+      // Turning it off resets both Gain knobs to 0 dB.
+      if (autoGainEnabled) {
+        autoLevelMatchedPair();
+      } else {
+        applyLevelGain('left', 0);
+        applyLevelGain('right', 0);
+      }
     });
 
     chkNoiseFilter.addEventListener('change', async () => {
