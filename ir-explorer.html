@@ -823,7 +823,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 24;
+    const BUILD_NO = 25;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1929,6 +1929,93 @@
       return out;
     }
 
+    // ── Auto-level (BS.1770 integrated LUFS) ──────────────────────────────────
+    const TARGET_LUFS = -18;   // dry-input target, ~4 dB below streaming so IR/EQ has headroom
+    const CLIP_TARGET_DBFS = -1;
+
+    function peakSample(buffer) {
+      let peak = 0;
+      for (let c = 0; c < buffer.numberOfChannels; c++) {
+        const d = buffer.getChannelData(c);
+        for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+      }
+      return peak;
+    }
+
+    // Integrated loudness with BS.1770 gating: 400ms blocks, 100ms hop,
+    // absolute gate at -70 LUFS, relative gate at -10 LU below the abs-gated mean.
+    function computeLufs(buffer) {
+      const sr = buffer.sampleRate;
+      const nCh = buffer.numberOfChannels;
+      const kCoeffs = kWeightingCoeffs(sr);
+      const kSigs = [];
+      for (let c = 0; c < nCh; c++) kSigs.push(applyKFilter(buffer.getChannelData(c), kCoeffs));
+      const N = kSigs[0].length;
+      const blockLen = Math.max(1, Math.round(0.4 * sr));
+      const hopLen   = Math.max(1, Math.round(0.1 * sr));
+
+      // Recording shorter than one block — measure over the whole buffer.
+      if (N < blockLen) {
+        let sumSq = 0, n = 0;
+        for (let c = 0; c < nCh; c++) for (let i = 0; i < N; i++) { sumSq += kSigs[c][i]*kSigs[c][i]; n++; }
+        if (n === 0) return -Infinity;
+        return -0.691 + 10 * Math.log10(Math.max(sumSq / n, 1e-12));
+      }
+
+      const blockL = [];
+      for (let start = 0; start + blockLen <= N; start += hopLen) {
+        let sumSq = 0;
+        for (let c = 0; c < nCh; c++) {
+          const s = kSigs[c];
+          for (let i = 0; i < blockLen; i++) sumSq += s[start + i] * s[start + i];
+        }
+        const ms = sumSq / (blockLen * nCh);
+        blockL.push(-0.691 + 10 * Math.log10(Math.max(ms, 1e-12)));
+      }
+      const abs = blockL.filter(l => l >= -70);
+      if (abs.length === 0) return -Infinity;
+      let meanMs = 0;
+      for (const l of abs) meanMs += Math.pow(10, (l + 0.691) / 10);
+      meanMs /= abs.length;
+      const meanL = -0.691 + 10 * Math.log10(meanMs);
+      const gated = abs.filter(l => l >= meanL - 10);
+      if (gated.length === 0) return -Infinity;
+      let finalMs = 0;
+      for (const l of gated) finalMs += Math.pow(10, (l + 0.691) / 10);
+      finalMs /= gated.length;
+      return -0.691 + 10 * Math.log10(finalMs);
+    }
+
+    // Compute + apply auto-level gain on the given side. Idempotent, safe to call
+    // any time the raw recording changes.
+    function autoLevelSide(side) {
+      const buffer = side === 'left' ? audioBuffer : rightRawBuffer;
+      if (!buffer) return;
+      const measured = computeLufs(buffer);
+      if (!isFinite(measured) || measured <= -70) return;  // silent
+      let gain = TARGET_LUFS - measured;
+      // Clip guard: keep post-gain peak below CLIP_TARGET_DBFS
+      const peak = peakSample(buffer);
+      if (peak > 1e-9) {
+        const maxGainDb = 20 * Math.log10(Math.pow(10, CLIP_TARGET_DBFS / 20) / peak);
+        if (gain > maxGainDb) gain = maxGainDb;
+      }
+      gain = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, gain));
+      if (side === 'left') {
+        inputGainDb = gain;
+        if (sampleGainNode) sampleGainNode.gain.value = dbToLinear(gain);
+        drawInputGainKnob();
+        inputGainLabel.textContent = (gain >= 0 ? '+' : '') + gain.toFixed(1) + ' dB';
+        if (audioBuffer) drawWaveform();
+      } else {
+        rightInputGainDb = gain;
+        if (rightSampleGainNode) rightSampleGainNode.gain.value = dbToLinear(gain);
+        drawRightInputGainKnob();
+        inputGainLabelR.textContent = (gain >= 0 ? '+' : '') + gain.toFixed(1) + ' dB';
+        if (rightRawBuffer) drawRightWaveform();
+      }
+    }
+
     // Convolves up to 2s of the waveform loop through the IR offline, then returns the
     // normGainDb needed to match the convolved output's K-weighted loudness (LUFS) to the dry.
     // Falls back to peak normalization when no waveform is available.
@@ -2781,6 +2868,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       btnPlay.classList.add('visible'); btnReset.classList.add('visible');
       durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
       setStatus('Ready.');
+      autoLevelSide('left');
       updateRightRecordBtn();
       recomputeAllNormGainDb();
     }
@@ -2867,6 +2955,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       rightRawBuffer      = rawBuf;
       rightActualDuration = rawBuf.duration;
+      autoLevelSide('right');
 
       const T_L = (loopEnd - loopStart) * audioBuffer.duration;
       const N   = Math.max(1, Math.ceil(rightActualDuration / T_L));
@@ -3726,6 +3815,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
       drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
+      autoLevelSide('left');   // overrides the session-saved inputGainDb — auto-level is authoritative
+      autoLevelSide('right');
       reverbLabel.textContent     = Math.round(reverbMix * 100) + '%';
       inputGainLabel.textContent  = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
       reverbLabelR.textContent    = Math.round(rightReverbMix * 100) + '%';
