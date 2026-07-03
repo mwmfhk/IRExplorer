@@ -823,7 +823,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 23;
+    const BUILD_NO = 24;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2181,7 +2181,7 @@
         irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · ${blended.numSamples} samples (${ms} ms @ ${sr} Hz)`;
       } else {
         drawFreqDomain(ctx, W, H, samples, sr);
-        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · magnitude spectrum, log-frequency`;
+        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · magnitude spectrum (peak-normalized to 0 dB)`;
       }
     }
 
@@ -2257,7 +2257,7 @@
 
       const nyquist = sr / 2;
       const fMin = 20, fMax = Math.min(nyquist, 20000);
-      const dbMin = -60, dbMax = 6;
+      const dbMin = -60, dbMax = 0;   // peak-normalized: top = 0 dB
       const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
 
       // dB grid + labels
@@ -2287,22 +2287,32 @@
       ctx.strokeStyle = '#eee';
       ctx.beginPath(); ctx.moveTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
 
-      // Magnitude curve — for each pixel x, sample the bin at that frequency
-      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      let started = false;
+      // Pass 1: compute dB at each pixel column, tracking the peak so we can
+      // peak-normalize the trace to 0 dB (prevents the curve clipping at the top).
+      const dbs = new Array(plotW + 1);
+      let maxDb = -Infinity;
       for (let px = 0; px <= plotW; px++) {
         const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
         const bin = f * M / sr;
         const b0 = Math.floor(bin), b1 = b0 + 1;
-        if (b0 < 1 || b1 >= M / 2) continue;
+        if (b0 < 1 || b1 >= M / 2) { dbs[px] = null; continue; }
         const t = bin - b0;
         const m0 = Math.sqrt(re[b0]*re[b0] + im[b0]*im[b0]);
         const m1 = Math.sqrt(re[b1]*re[b1] + im[b1]*im[b1]);
         const mag = m0 + (m1 - m0) * t;
-        let db = 20 * Math.log10(Math.max(mag, 1e-10));
+        const db = 20 * Math.log10(Math.max(mag, 1e-10));
+        dbs[px] = db;
+        if (db > maxDb) maxDb = db;
+      }
+
+      // Pass 2: draw the normalized trace (subtract peak so top = 0 dB).
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let px = 0; px <= plotW; px++) {
+        if (dbs[px] === null) continue;
+        let db = dbs[px] - maxDb;
         if (db < dbMin) db = dbMin;
-        if (db > dbMax) db = dbMax;
         const x = padL + px;
         const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
