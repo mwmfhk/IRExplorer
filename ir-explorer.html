@@ -848,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 36;
+    const BUILD_NO = 37;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1882,7 +1882,7 @@
     }
 
     // ── Background noise filter (real-time Log-MMSE) ─────────────────────────
-    const NF_W = 1024;                    // must match NoiseFilterProcessor.W
+    const NF_W = 2048;                    // must match NoiseFilterProcessor.W
     let noiseFilterEnabled = false;
     let noiseProfileL = null;             // { mag: Float32Array, samples: Float32Array, sr: number }
     let noiseProfileR = null;
@@ -2757,20 +2757,20 @@ function expint1(v) {
 }
 
 // Real-time noise reduction via Log-MMSE (Ephraim-Malah 1985) with STFT + OLA.
-// W=1024, H=128 (87.5% overlap, 8 frames overlap each output sample), periodic
-// Hann on both analysis and synthesis. Bin width 46.9 Hz @ 48k for tight
-// tonal-noise separation. Per-bin gain from log-magnitude MMSE estimator,
-// decision-directed a-priori SNR, plus 3-tap median smoother across bins to
-// suppress residual musical noise. Latency = W-H = 896 samples (~19ms @ 48k).
-// Zero-latency passthrough when off.
+// W=2048, H=128 (93.75% overlap, 16 frames overlap each output sample),
+// periodic Hann on both analysis and synthesis. Bin width 23.4 Hz @ 48k for
+// surgical tonal-noise separation. Per-bin gain from log-magnitude MMSE
+// estimator, decision-directed a-priori SNR, plus 3-tap median smoother
+// across bins to suppress residual musical noise. Latency = W-H = 1920
+// samples (~40ms @ 48k). Zero-latency passthrough when off.
 class NoiseFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.W = 1024;
+    this.W = 2048;
     this.H = 128;
     this.numBins = this.W / 2 + 1;
-    // 8-frame overlap: ∑ periodic-Hann² at hop=W/8 = 3, so olaGain = 1/3
-    this.olaGain = 1 / 3;
+    // 16-frame overlap: ∑ periodic-Hann² at hop=W/16 = 6, so olaGain = 1/6
+    this.olaGain = 1 / 6;
     this.hann = new Float32Array(this.W);
     for (let n = 0; n < this.W; n++) this.hann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / this.W));
     this.history = new Float32Array(this.W - this.H);  // last (W-H) input samples
@@ -2787,9 +2787,9 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
 
     this.enabled = false;
     this.noiseProfileMag = null;                       // Float32Array of magnitudes (numBins)
-    this.minGain = 0.1;                                // -20 dB floor (Log-MMSE goes deep naturally)
+    this.minGain = 0.03;                               // -30 dB floor (aggressive)
     this.ddAlpha = 0.98;                               // decision-directed smoothing weight
-    this.oversubtract = 1.5;                           // σ²_N multiplier (mild for Log-MMSE)
+    this.oversubtract = 4.0;                           // σ²_N multiplier (aggressive attack on marginal bins)
     this.reportEveryFrames = 0;                        // 0 = off, else post avg gain every N frames
     this.framesSinceReport = 0;
     this.gainSum = 0;
