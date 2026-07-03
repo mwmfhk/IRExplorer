@@ -720,7 +720,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 19;
+    const BUILD_NO = 20;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2387,13 +2387,39 @@ registerProcessor('recorder-processor', RecorderProcessor);
       mediaRec?.state === 'recording' ? stopRecording() : startRecording();
     });
 
+    // Get a mic stream with our preferred constraints, falling back to plain
+    // audio:true if iOS Safari (or another browser) can't satisfy them.
+    async function getMicStream() {
+      const preferred = { audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false } };
+      try {
+        return await navigator.mediaDevices.getUserMedia(preferred);
+      } catch (e) {
+        if (e.name === 'NotAllowedError' || e.name === 'SecurityError') throw e;
+        // OverconstrainedError, NotFoundError with the specific constraints, etc.
+        return await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+    }
+
     async function startRecording() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
-        });
-      } catch { setStatus('Microphone access denied.'); return; }
-      chunks = []; mediaRec = new MediaRecorder(stream);
+        stream = await getMicStream();
+      } catch (e) {
+        setStatus('Mic error: ' + e.name + (e.message ? ' — ' + e.message : ''));
+        return;
+      }
+      if (typeof MediaRecorder === 'undefined') {
+        setStatus('MediaRecorder unavailable in this browser.');
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
+      chunks = [];
+      try {
+        mediaRec = new MediaRecorder(stream);
+      } catch (e) {
+        setStatus('Recorder init failed: ' + e.name + ' — ' + e.message);
+        stream.getTracks().forEach(t => t.stop());
+        return;
+      }
       mediaRec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
       mediaRec.onstop          = onRecordingStop;
       mediaRec.start(100);
@@ -2408,9 +2434,9 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     async function onRecordingStop() {
-      const blob = new Blob(chunks, { type: 'audio/webm' });
+      const blob = new Blob(chunks, { type: mediaRec?.mimeType || 'audio/webm' });
       try { audioBuffer = await getAudioCtx().decodeAudioData(await blob.arrayBuffer()); }
-      catch { setStatus('Failed to decode audio.'); return; }
+      catch (e) { setStatus('Decode failed: ' + e.name + ' — ' + e.message); return; }
       wfContainer.classList.add('visible');
       requestAnimationFrame(() => { drawWaveform(); showHandles(); });
       btnPlay.classList.add('visible'); btnReset.classList.add('visible');
@@ -2422,6 +2448,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     // ── Right recording ───────────────────────────────────────────────────────
     btnRecordR.addEventListener('click', () => {
+      unlockAndResume();
       if (rightIsRecording) { stopRightRecording(); return; }
       startRightRecording().catch(e => { setRightStatus('Error: ' + e.message); console.error(e); });
     });
@@ -2430,10 +2457,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
       if (!audioBuffer || !isPlaying) { setRightStatus('Start left playback first.'); return; }
       const ctx = getAudioCtx();
       try {
-        rightStream = await navigator.mediaDevices.getUserMedia({
-          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
-        });
-      } catch { setRightStatus('Microphone access denied.'); return; }
+        rightStream = await getMicStream();
+      } catch (e) { setRightStatus('Mic error: ' + e.name + (e.message ? ' — ' + e.message : '')); return; }
 
       const useWorklet = await ensureWorklet();
       rightPCMChunks = [];
@@ -2813,10 +2838,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
       const ctx = getAudioCtx();
 
       try {
-        calStream = await navigator.mediaDevices.getUserMedia({
-          audio: { autoGainControl: false, echoCancellation: false, noiseSuppression: false }
-        });
-      } catch { setRightStatus('Mic access denied.'); return; }
+        calStream = await getMicStream();
+      } catch (e) { setRightStatus('Mic error: ' + e.name + (e.message ? ' — ' + e.message : '')); return; }
 
       const useWorklet = await ensureWorklet();
       calPCMChunks = []; calRecordStartCtxTime = 0; calClickTimes = [];
@@ -3045,6 +3068,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
     }
 
     btnCal.addEventListener('click', () => {
+      unlockAndResume();
       runCalibration().catch(e => { setRightStatus('Error: ' + e.message); console.error(e); });
     });
 
