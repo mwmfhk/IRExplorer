@@ -823,7 +823,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 25;
+    const BUILD_NO = 26;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1986,21 +1986,9 @@
       return -0.691 + 10 * Math.log10(finalMs);
     }
 
-    // Compute + apply auto-level gain on the given side. Idempotent, safe to call
-    // any time the raw recording changes.
-    function autoLevelSide(side) {
-      const buffer = side === 'left' ? audioBuffer : rightRawBuffer;
-      if (!buffer) return;
-      const measured = computeLufs(buffer);
-      if (!isFinite(measured) || measured <= -70) return;  // silent
-      let gain = TARGET_LUFS - measured;
-      // Clip guard: keep post-gain peak below CLIP_TARGET_DBFS
-      const peak = peakSample(buffer);
-      if (peak > 1e-9) {
-        const maxGainDb = 20 * Math.log10(Math.pow(10, CLIP_TARGET_DBFS / 20) / peak);
-        if (gain > maxGainDb) gain = maxGainDb;
-      }
-      gain = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, gain));
+    // Apply a specific dB gain to one side's Gain knob (used by both single-side
+    // and matched-pair auto-level).
+    function applyLevelGain(side, gain) {
       if (side === 'left') {
         inputGainDb = gain;
         if (sampleGainNode) sampleGainNode.gain.value = dbToLinear(gain);
@@ -2014,6 +2002,55 @@
         inputGainLabelR.textContent = (gain >= 0 ? '+' : '') + gain.toFixed(1) + ' dB';
         if (rightRawBuffer) drawRightWaveform();
       }
+    }
+
+    // Single-side auto-level (used when only one track is loaded).
+    function autoLevelSide(side) {
+      const buffer = side === 'left' ? audioBuffer : rightRawBuffer;
+      if (!buffer) return;
+      const measured = computeLufs(buffer);
+      if (!isFinite(measured) || measured <= -70) return;
+      let gain = TARGET_LUFS - measured;
+      const peak = peakSample(buffer);
+      if (peak > 1e-9) {
+        const maxGainDb = 20 * Math.log10(Math.pow(10, CLIP_TARGET_DBFS / 20) / peak);
+        if (gain > maxGainDb) gain = maxGainDb;
+      }
+      gain = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, gain));
+      applyLevelGain(side, gain);
+    }
+
+    // Matched-pair auto-level: measure both tracks, apply a SINGLE common makeup
+    // gain to both so the arithmetic-mean LUFS lands on TARGET_LUFS. Preserves
+    // whatever relative loudness the user played at.
+    function autoLevelMatchedPair() {
+      const havL = !!audioBuffer, havR = !!rightRawBuffer;
+      if (!havL && !havR) return;
+      if (!havL) return autoLevelSide('right');
+      if (!havR) return autoLevelSide('left');
+
+      const L = computeLufs(audioBuffer);
+      const R = computeLufs(rightRawBuffer);
+      const validL = isFinite(L) && L > -70;
+      const validR = isFinite(R) && R > -70;
+      if (!validL && !validR) return;
+      // If one side is silent, only level the other one (matched pair is meaningless).
+      if (!validL) return autoLevelSide('right');
+      if (!validR) return autoLevelSide('left');
+
+      const meanLufs = (L + R) / 2;
+      let gain = TARGET_LUFS - meanLufs;
+
+      // Clip guard: keep post-gain peak of BOTH sides ≤ CLIP_TARGET_DBFS.
+      const peakL = peakSample(audioBuffer);
+      const peakR = peakSample(rightRawBuffer);
+      const clipLinear = Math.pow(10, CLIP_TARGET_DBFS / 20);
+      if (peakL > 1e-9) gain = Math.min(gain, 20 * Math.log10(clipLinear / peakL));
+      if (peakR > 1e-9) gain = Math.min(gain, 20 * Math.log10(clipLinear / peakR));
+
+      gain = Math.max(INPUT_GAIN_MIN, Math.min(INPUT_GAIN_MAX, gain));
+      applyLevelGain('left', gain);
+      applyLevelGain('right', gain);
     }
 
     // Convolves up to 2s of the waveform loop through the IR offline, then returns the
@@ -2868,7 +2905,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       btnPlay.classList.add('visible'); btnReset.classList.add('visible');
       durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
       setStatus('Ready.');
-      autoLevelSide('left');
+      autoLevelMatchedPair();
       updateRightRecordBtn();
       recomputeAllNormGainDb();
     }
@@ -2955,7 +2992,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       rightRawBuffer      = rawBuf;
       rightActualDuration = rawBuf.duration;
-      autoLevelSide('right');
+      autoLevelMatchedPair();
 
       const T_L = (loopEnd - loopStart) * audioBuffer.duration;
       const N   = Math.max(1, Math.ceil(rightActualDuration / T_L));
@@ -3815,8 +3852,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
       drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
       drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
-      autoLevelSide('left');   // overrides the session-saved inputGainDb — auto-level is authoritative
-      autoLevelSide('right');
+      autoLevelMatchedPair();   // overrides the session-saved inputGainDb — auto-level is authoritative
       reverbLabel.textContent     = Math.round(reverbMix * 100) + '%';
       inputGainLabel.textContent  = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
       reverbLabelR.textContent    = Math.round(rightReverbMix * 100) + '%';
