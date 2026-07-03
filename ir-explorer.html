@@ -839,7 +839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 29;
+    const BUILD_NO = 30;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2836,8 +2836,9 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       const ctx = getAudioCtx();
       if (!audioBuffer) { setStatus('No audio loaded'); return; }
       if (ctx.state !== 'running') { setStatus('ctx not running: ' + ctx.state); return; }
-      // Preload the worklet if noise filtering is turned on so createNoiseFilterNode can succeed.
-      if (noiseFilterEnabled) await ensureWorklet();
+      // Always try to load the worklet so the filter node is available for mid-playback toggles.
+      // When disabled the worklet does zero-latency passthrough, so keeping it in the graph is free.
+      await ensureWorklet();
       const hasIR = irSlots.length > 0;
 
       sourceNode        = ctx.createBufferSource();
