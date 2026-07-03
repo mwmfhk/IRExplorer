@@ -78,6 +78,14 @@
     .btn-sidebar.danger { background: #fff1f1; color: #b91c1c; border-color: #fecaca; }
     .btn-sidebar.danger:hover { background: #fee2e2; }
 
+    .sidebar-check {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.7rem; color: #333;
+      letter-spacing: 0.02em; cursor: pointer;
+      user-select: none;
+    }
+    .sidebar-check input[type="checkbox"] { accent-color: #f59e0b; cursor: pointer; }
+
     .main-content {
       flex: 1;
       display: flex;
@@ -608,7 +616,11 @@
       <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
       <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
       <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
-      <button class="btn-sidebar" id="btnDemo" style="margin-top:0.75rem">&#9654; Demo session</button>
+      <label class="sidebar-check" style="margin-top:0.75rem">
+        <input type="checkbox" id="chkNoiseFilter">
+        <span>Background Noise Filtering</span>
+      </label>
+      <button class="btn-sidebar" id="btnDemo" style="margin-top:0.5rem">&#9654; Demo session</button>
       <div style="flex:1"></div>
       <div class="sidebar-actions">
         <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
@@ -823,7 +835,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 26;
+    const BUILD_NO = 27;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -856,6 +868,7 @@
     const btnLoad      = document.getElementById('btnLoad');
     const btnClear     = document.getElementById('btnClear');
     const btnDemo      = document.getElementById('btnDemo');
+    const chkNoiseFilter = document.getElementById('chkNoiseFilter');
     const sessionNotesEl = document.getElementById('sessionNotes');
     const btnAddIr      = document.getElementById('btnAddIr');
     const btnAddIrR     = document.getElementById('btnAddIrR');
@@ -959,6 +972,7 @@
     let irBypassed  = false;
     let reverbNode  = null, reverbWet = null, reverbDry = null;
     let sampleGainNode = null;
+    let postGainNode = null;   // fan-out point after noise filter (or sampleGain if no filter)
     let loopStart = 0, loopEnd = 1;
     let waveDrag  = null;
     let irSlots   = [], pendingSlot = null;
@@ -989,6 +1003,7 @@
 
     let rightSourceNode    = null;
     let rightSampleGainNode = null;
+    let rightPostGainNode = null;
     let rightDryGain = null, rightWetMaster = null;
     let rightSlotGains = [], rightSlotConvs = [];
     let rightIrBypassed = false;
@@ -1633,7 +1648,7 @@
       }
       const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       const sg   = ctx.createGain();
-      sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
+      postGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
       slotConvs[idx] = conv; slotGains[idx] = sg;
       updateBlendGains();
     }
@@ -1642,18 +1657,18 @@
       const ctx  = getAudioCtx();
       const slot = irSlots[idx];
       if (slotConvs[idx]) {
-        try { sampleGainNode.disconnect(slotConvs[idx]); } catch {}
+        try { postGainNode.disconnect(slotConvs[idx]); } catch {}
         try { slotConvs[idx].disconnect(slotGains[idx]); } catch {}
       }
       const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
-      sampleGainNode.connect(conv); conv.connect(slotGains[idx]);
+      postGainNode.connect(conv); conv.connect(slotGains[idx]);
       slotConvs[idx] = conv;
       updateBlendGains();
     }
     function liveRemoveIrSlot(idx) {
       if (!isPlaying || !sampleGainNode) return;
       if (slotConvs[idx]) {
-        try { sampleGainNode.disconnect(slotConvs[idx]); } catch {}
+        try { postGainNode.disconnect(slotConvs[idx]); } catch {}
         try { slotConvs[idx].disconnect(slotGains[idx]); } catch {}
       }
       if (slotGains[idx] && wetMaster) { try { slotGains[idx].disconnect(wetMaster); } catch {} }
@@ -1681,7 +1696,7 @@
       }
       const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
       const sg   = ctx.createGain();
-      rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
+      rightPostGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
       rightSlotConvs[idx] = conv; rightSlotGains[idx] = sg;
       updateRightBlendGains();
     }
@@ -1690,18 +1705,18 @@
       const ctx  = getAudioCtx();
       const slot = rightIrSlots[idx];
       if (rightSlotConvs[idx]) {
-        try { rightSampleGainNode.disconnect(rightSlotConvs[idx]); } catch {}
+        try { rightPostGainNode.disconnect(rightSlotConvs[idx]); } catch {}
         try { rightSlotConvs[idx].disconnect(rightSlotGains[idx]); } catch {}
       }
       const conv = ctx.createConvolver(); conv.normalize = false; conv.buffer = effectiveIRBuffer(slot);
-      rightSampleGainNode.connect(conv); conv.connect(rightSlotGains[idx]);
+      rightPostGainNode.connect(conv); conv.connect(rightSlotGains[idx]);
       rightSlotConvs[idx] = conv;
       updateRightBlendGains();
     }
     function liveRemoveRightIrSlot(idx) {
       if (!isPlaying || !rightSampleGainNode) return;
       if (rightSlotConvs[idx]) {
-        try { rightSampleGainNode.disconnect(rightSlotConvs[idx]); } catch {}
+        try { rightPostGainNode.disconnect(rightSlotConvs[idx]); } catch {}
         try { rightSlotConvs[idx].disconnect(rightSlotGains[idx]); } catch {}
       }
       if (rightSlotGains[idx] && rightWetMaster) { try { rightSlotGains[idx].disconnect(rightWetMaster); } catch {} }
@@ -1851,6 +1866,85 @@
         });
       }
       return slots.map(extractSlotChannels);
+    }
+
+    // ── Background noise filter (real-time Wiener) ────────────────────────────
+    const NF_W = 512;                     // must match NoiseFilterProcessor.W
+    let noiseFilterEnabled = false;
+    let noiseProfileL = null;             // Float32Array of bin magnitudes for left/rhythm
+    let noiseProfileR = null;             // and right/lead
+    let noiseFilterNodeL = null;
+    let noiseFilterNodeR = null;
+
+    // Scan the recorded buffer for its quietest 200 ms window and return the
+    // averaged magnitude spectrum over that window as a per-bin noise floor.
+    function computeNoiseProfile(buffer) {
+      if (!buffer) return null;
+      const samples = buffer.getChannelData(0);
+      const sr = buffer.sampleRate;
+      const noiseLen = Math.min(samples.length, Math.max(NF_W, Math.round(0.2 * sr)));
+      if (samples.length < noiseLen + NF_W) return null;
+
+      // Find quietest 200-ms window via block-RMS scan (coarse step for speed).
+      const step = Math.max(1, Math.floor(noiseLen / 16));
+      let minSumSq = Infinity, minStart = 0;
+      for (let start = 0; start + noiseLen <= samples.length; start += step) {
+        let sumSq = 0;
+        for (let i = 0; i < noiseLen; i++) sumSq += samples[start + i] * samples[start + i];
+        if (sumSq < minSumSq) { minSumSq = sumSq; minStart = start; }
+      }
+      const noiseEnd = minStart + noiseLen;
+
+      // Average magnitude spectrum over overlapping STFT frames in that window.
+      const numBins = NF_W / 2 + 1;
+      const magAvg = new Float32Array(numBins);
+      const hann = new Float32Array(NF_W);
+      for (let n = 0; n < NF_W; n++) hann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / NF_W));
+      const re = new Float32Array(NF_W), im = new Float32Array(NF_W);
+      const H = NF_W / 4;                 // dense sampling for a smooth profile
+      let frames = 0;
+      for (let start = minStart; start + NF_W <= noiseEnd; start += H) {
+        for (let n = 0; n < NF_W; n++) re[n] = samples[start + n] * hann[n];
+        im.fill(0);
+        fftRadix2(re, im, false);
+        for (let k = 0; k < numBins; k++) magAvg[k] += Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+        frames++;
+      }
+      if (frames === 0) return null;
+      for (let k = 0; k < numBins; k++) magAvg[k] /= frames;
+      return magAvg;
+    }
+
+    function updateNoiseProfile(side) {
+      if (side === 'left') {
+        noiseProfileL = computeNoiseProfile(audioBuffer);
+        if (noiseFilterNodeL && noiseProfileL) {
+          const copy = new Float32Array(noiseProfileL);
+          noiseFilterNodeL.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
+        }
+      } else {
+        noiseProfileR = computeNoiseProfile(rightRawBuffer);
+        if (noiseFilterNodeR && noiseProfileR) {
+          const copy = new Float32Array(noiseProfileR);
+          noiseFilterNodeR.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
+        }
+      }
+    }
+
+    // Create a noise-filter worklet node with the current profile + enable state.
+    // Returns null if AudioWorklet isn't available (feature quietly disabled).
+    function createNoiseFilterNode(side) {
+      if (workletCtx !== getAudioCtx()) return null;
+      let node;
+      try { node = new AudioWorkletNode(getAudioCtx(), 'noise-filter-processor'); }
+      catch (e) { return null; }
+      const profile = side === 'left' ? noiseProfileL : noiseProfileR;
+      if (profile) {
+        const copy = new Float32Array(profile);
+        node.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
+      }
+      node.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+      return node;
     }
 
     function computeBlendedIR(slots, bp, correctionMode = 'none') {
@@ -2563,7 +2657,7 @@
       src.buffer = buf; src.connect(ctx.destination); src.start(0);
     }
 
-    // ── AudioWorklet recorder ─────────────────────────────────────────────────
+    // ── AudioWorklet module (recorder + real-time noise filter) ──────────────
     const RECORDER_WORKLET_CODE = `
 class RecorderProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -2590,6 +2684,125 @@ class RecorderProcessor extends AudioWorkletProcessor {
   }
 }
 registerProcessor('recorder-processor', RecorderProcessor);
+
+// In-place radix-2 Cooley-Tukey FFT. Duplicated here because worklet scope
+// can't reach main-thread functions.
+function fft2(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (inverse ? 2 : -2) * Math.PI / len, half = len >> 1;
+    const wRe = Math.cos(ang), wIm = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cRe = 1, cIm = 0;
+      for (let k = 0; k < half; k++) {
+        const xRe = re[i+k], xIm = im[i+k];
+        const yRe = re[i+k+half] * cRe - im[i+k+half] * cIm;
+        const yIm = re[i+k+half] * cIm + im[i+k+half] * cRe;
+        re[i+k] = xRe + yRe; im[i+k] = xIm + yIm;
+        re[i+k+half] = xRe - yRe; im[i+k+half] = xIm - yIm;
+        const nRe = cRe * wRe - cIm * wIm;
+        cIm = cRe * wIm + cIm * wRe; cRe = nRe;
+      }
+    }
+  }
+  if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+
+// Real-time Wiener-filter noise reduction with STFT + overlap-add.
+// W=512, H=128 (75% overlap), periodic Hann on both analysis and synthesis,
+// COLA normalization factor 2/3. Latency = W-H = 384 samples (~8ms @ 48k).
+// Passes through with zero latency when disabled or no noise profile posted.
+class NoiseFilterProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.W = 512;
+    this.H = 128;
+    this.numBins = this.W / 2 + 1;
+    this.olaGain = 2 / 3;                              // Hann analysis + Hann synthesis, hop=W/4
+    this.hann = new Float32Array(this.W);
+    for (let n = 0; n < this.W; n++) this.hann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / this.W));
+    this.history = new Float32Array(this.W - this.H);  // last (W-H) input samples
+    this.frame   = new Float32Array(this.W);
+    this.re      = new Float32Array(this.W);
+    this.im      = new Float32Array(this.W);
+    this.ola     = new Float32Array(this.W);
+    this.prevGain = new Float32Array(this.numBins);
+    for (let k = 0; k < this.numBins; k++) this.prevGain[k] = 1;
+
+    this.enabled = false;
+    this.noiseProfileMag = null;                       // Float32Array of magnitudes (numBins)
+    this.minGain = 0.3;                                // ~ -10 dB floor
+    this.smoothingAlpha = 0.6;                         // time smoothing weight for prev gain
+    this.oversubtract = 1.0;                           // 1 = pure Wiener
+
+    this.port.onmessage = ({ data }) => {
+      if (data.type === 'enable')     this.enabled = !!data.value;
+      else if (data.type === 'profile') {
+        this.noiseProfileMag = data.value ? new Float32Array(data.value) : null;
+      }
+      else if (data.type === 'minGain')       this.minGain = data.value;
+      else if (data.type === 'smoothing')     this.smoothingAlpha = data.value;
+      else if (data.type === 'oversubtract')  this.oversubtract = data.value;
+    };
+  }
+
+  process(inputs, outputs) {
+    const input = inputs[0] && inputs[0][0];
+    const output = outputs[0][0];
+    if (!input) { output.fill(0); return true; }
+    if (!this.enabled || !this.noiseProfileMag) { output.set(input); return true; }
+
+    // Assemble analysis frame: history + new input block
+    this.frame.set(this.history);
+    this.frame.set(input, this.W - this.H);
+    // Save last (W-H) samples of frame as next history
+    this.history.set(this.frame.subarray(this.H));
+
+    // Windowed FFT
+    for (let n = 0; n < this.W; n++) this.re[n] = this.frame[n] * this.hann[n];
+    this.im.fill(0);
+    fft2(this.re, this.im, false);
+
+    // Per-bin Wiener gain with over-subtraction + min-gain floor + time smoothing
+    for (let k = 0; k < this.numBins; k++) {
+      const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
+      const noise2 = this.noiseProfileMag[k] * this.noiseProfileMag[k];
+      let g = mag2 / (mag2 + this.oversubtract * noise2 + 1e-18);
+      if (g < this.minGain) g = this.minGain;
+      g = this.smoothingAlpha * this.prevGain[k] + (1 - this.smoothingAlpha) * g;
+      this.prevGain[k] = g;
+      this.re[k] *= g;
+      this.im[k] *= g;
+      // Hermitian-symmetric mirror for real-valued output
+      if (k > 0 && k < this.W / 2) {
+        this.re[this.W - k] =  this.re[k];
+        this.im[this.W - k] = -this.im[k];
+      }
+    }
+
+    // IFFT
+    fft2(this.re, this.im, true);
+
+    // OLA: shift ola left by H, zero-fill tail, then add current windowed IFFT
+    this.ola.copyWithin(0, this.H);
+    for (let n = this.W - this.H; n < this.W; n++) this.ola[n] = 0;
+    const gain = this.olaGain;
+    for (let n = 0; n < this.W; n++) {
+      this.ola[n] += this.re[n] * this.hann[n] * gain;
+    }
+
+    // Emit first H samples
+    for (let n = 0; n < this.H; n++) output[n] = this.ola[n];
+    return true;
+  }
+}
+registerProcessor('noise-filter-processor', NoiseFilterProcessor);
 `;
     let workletCtx = null;
     let workletAvailable = null; // null=untested, true=ok, false=unavailable
@@ -2616,6 +2829,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
       const ctx = getAudioCtx();
       if (!audioBuffer) { setStatus('No audio loaded'); return; }
       if (ctx.state !== 'running') { setStatus('ctx not running: ' + ctx.state); return; }
+      // Preload the worklet if noise filtering is turned on so createNoiseFilterNode can succeed.
+      if (noiseFilterEnabled) await ensureWorklet();
       const hasIR = irSlots.length > 0;
 
       sourceNode        = ctx.createBufferSource();
@@ -2624,6 +2839,16 @@ registerProcessor('recorder-processor', RecorderProcessor);
       sampleGainNode            = ctx.createGain();
       sampleGainNode.gain.value = dbToLinear(inputGainDb);
       sourceNode.connect(sampleGainNode);
+
+      // Optional real-time noise filter. If the worklet is available, insert it
+      // between sampleGain and the fan-out; otherwise fan out directly from sampleGain.
+      noiseFilterNodeL = createNoiseFilterNode('left');
+      if (noiseFilterNodeL) {
+        sampleGainNode.connect(noiseFilterNodeL);
+        postGainNode = noiseFilterNodeL;
+      } else {
+        postGainNode = sampleGainNode;
+      }
 
       // EQ master bus (post-reverb)
       masterBus  = ctx.createGain(); masterBus.gain.value = 1;
@@ -2638,7 +2863,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       dryGain            = ctx.createGain();
       dryGain.gain.value = (!hasIR || irBypassed) ? 1 : 0;
       dryGain.connect(masterBus);
-      sampleGainNode.connect(dryGain);
+      postGainNode.connect(dryGain);
 
       slotGains = [];
       reverbNode           = ctx.createConvolver();
@@ -2661,7 +2886,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
           const conv = ctx.createConvolver();
           conv.normalize = false;
           conv.buffer = effectiveIRBuffer(slot);
-          sampleGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
+          postGainNode.connect(conv); conv.connect(sg); sg.connect(wetMaster);
           slotConvs[i] = conv;
         });
       }
@@ -2691,6 +2916,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
     function stopPlay() {
       if (sourceNode) { try { sourceNode.stop(); } catch {} }
       stopRightPlay();
+      if (noiseFilterNodeL) { try { noiseFilterNodeL.disconnect(); } catch {} noiseFilterNodeL = null; }
+      postGainNode = null;
       isPlaying = false;
       playIcon.className = 'icon-play';
       btnPlay.childNodes[1].textContent = ' Play';
@@ -2725,6 +2952,15 @@ registerProcessor('recorder-processor', RecorderProcessor);
       rightSampleGainNode.gain.value = dbToLinear(rightInputGainDb);
       rightSourceNode.connect(rightSampleGainNode);
 
+      // Optional real-time noise filter
+      noiseFilterNodeR = createNoiseFilterNode('right');
+      if (noiseFilterNodeR) {
+        rightSampleGainNode.connect(noiseFilterNodeR);
+        rightPostGainNode = noiseFilterNodeR;
+      } else {
+        rightPostGainNode = rightSampleGainNode;
+      }
+
       // EQ master bus (post-reverb)
       rightMasterBus  = ctx.createGain(); rightMasterBus.gain.value = 1;
       rightEqLowNode  = ctx.createBiquadFilter();
@@ -2738,7 +2974,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       rightDryGain            = ctx.createGain();
       rightDryGain.gain.value = (!hasIR || rightIrBypassed) ? 1 : 0;
       rightDryGain.connect(rightMasterBus);
-      rightSampleGainNode.connect(rightDryGain);
+      rightPostGainNode.connect(rightDryGain);
 
       rightSlotGains = []; rightSlotConvs = [];
       rightReverbNode           = ctx.createConvolver();
@@ -2760,7 +2996,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
           const conv = ctx.createConvolver();
           conv.normalize = false;
           conv.buffer = effectiveIRBuffer(slot);
-          rightSampleGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
+          rightPostGainNode.connect(conv); conv.connect(sg); sg.connect(rightWetMaster);
           rightSlotConvs[i] = conv;
         });
       }
@@ -2780,6 +3016,8 @@ registerProcessor('recorder-processor', RecorderProcessor);
 
     function stopRightPlay() {
       if (rightSourceNode) { try { rightSourceNode.stop(); } catch {} rightSourceNode = null; }
+      if (noiseFilterNodeR) { try { noiseFilterNodeR.disconnect(); } catch {} noiseFilterNodeR = null; }
+      rightPostGainNode = null;
       playheadR.classList.remove('active');
       cancelAnimationFrame(rightAnimFrame);
     }
@@ -2906,6 +3144,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
       setStatus('Ready.');
       autoLevelMatchedPair();
+      updateNoiseProfile('left');
       updateRightRecordBtn();
       recomputeAllNormGainDb();
     }
@@ -2993,6 +3232,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       rightRawBuffer      = rawBuf;
       rightActualDuration = rawBuf.duration;
       autoLevelMatchedPair();
+      updateNoiseProfile('right');
 
       const T_L = (loopEnd - loopStart) * audioBuffer.duration;
       const N   = Math.max(1, Math.ceil(rightActualDuration / T_L));
@@ -3853,6 +4093,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
       drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
       autoLevelMatchedPair();   // overrides the session-saved inputGainDb — auto-level is authoritative
+      updateNoiseProfile('left'); updateNoiseProfile('right');
       reverbLabel.textContent     = Math.round(reverbMix * 100) + '%';
       inputGainLabel.textContent  = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
       reverbLabelR.textContent    = Math.round(rightReverbMix * 100) + '%';
@@ -3997,6 +4238,15 @@ registerProcessor('recorder-processor', RecorderProcessor);
     );
     btnClear.addEventListener('click', clearSession);
     btnDemo.addEventListener('click', loadDemoSession);
+
+    chkNoiseFilter.addEventListener('change', async () => {
+      noiseFilterEnabled = chkNoiseFilter.checked;
+      // Ensure worklet is loaded so the filter can be inserted next time playback starts.
+      if (noiseFilterEnabled) { unlockAndResume(); await ensureWorklet(); }
+      // If playback is live, message the existing filter nodes so the change is heard immediately.
+      if (noiseFilterNodeL) noiseFilterNodeL.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+      if (noiseFilterNodeR) noiseFilterNodeR.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+    });
 
     // ── Status ────────────────────────────────────────────────────────────────
     function setStatus(msg)      { statusText.textContent  = msg; }
