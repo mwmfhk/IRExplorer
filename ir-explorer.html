@@ -617,6 +617,10 @@
       <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
       <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
       <label class="sidebar-check" style="margin-top:0.75rem">
+        <input type="checkbox" id="chkAutoGain" checked>
+        <span>Auto Gain</span>
+      </label>
+      <label class="sidebar-check">
         <input type="checkbox" id="chkNoiseFilter">
         <span>Background Noise Filtering</span>
       </label>
@@ -835,7 +839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 27;
+    const BUILD_NO = 28;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -868,6 +872,7 @@
     const btnLoad      = document.getElementById('btnLoad');
     const btnClear     = document.getElementById('btnClear');
     const btnDemo      = document.getElementById('btnDemo');
+    const chkAutoGain    = document.getElementById('chkAutoGain');
     const chkNoiseFilter = document.getElementById('chkNoiseFilter');
     const sessionNotesEl = document.getElementById('sessionNotes');
     const btnAddIr      = document.getElementById('btnAddIr');
@@ -2080,6 +2085,8 @@
       return -0.691 + 10 * Math.log10(finalMs);
     }
 
+    let autoGainEnabled = true;   // toggled by the Auto Gain sidebar checkbox
+
     // Apply a specific dB gain to one side's Gain knob (used by both single-side
     // and matched-pair auto-level).
     function applyLevelGain(side, gain) {
@@ -3143,7 +3150,7 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       btnPlay.classList.add('visible'); btnReset.classList.add('visible');
       durationEl.textContent = audioBuffer.duration.toFixed(2) + 's';
       setStatus('Ready.');
-      autoLevelMatchedPair();
+      if (autoGainEnabled) autoLevelMatchedPair();
       updateNoiseProfile('left');
       updateRightRecordBtn();
       recomputeAllNormGainDb();
@@ -3231,7 +3238,7 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
 
       rightRawBuffer      = rawBuf;
       rightActualDuration = rawBuf.duration;
-      autoLevelMatchedPair();
+      if (autoGainEnabled) autoLevelMatchedPair();
       updateNoiseProfile('right');
 
       const T_L = (loopEnd - loopStart) * audioBuffer.duration;
@@ -4092,7 +4099,7 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
 
       drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
       drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
-      autoLevelMatchedPair();   // overrides the session-saved inputGainDb — auto-level is authoritative
+      if (autoGainEnabled) autoLevelMatchedPair();   // overrides session-saved inputGainDb — auto-level is authoritative
       updateNoiseProfile('left'); updateNoiseProfile('right');
       reverbLabel.textContent     = Math.round(reverbMix * 100) + '%';
       inputGainLabel.textContent  = (inputGainDb >= 0 ? '+' : '') + inputGainDb.toFixed(1) + ' dB';
@@ -4238,6 +4245,13 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     );
     btnClear.addEventListener('click', clearSession);
     btnDemo.addEventListener('click', loadDemoSession);
+
+    chkAutoGain.addEventListener('change', () => {
+      autoGainEnabled = chkAutoGain.checked;
+      // Turning it on retro-actively levels the currently-loaded recordings.
+      // Turning it off just leaves the current gain settings alone.
+      if (autoGainEnabled) autoLevelMatchedPair();
+    });
 
     chkNoiseFilter.addEventListener('change', async () => {
       noiseFilterEnabled = chkNoiseFilter.checked;
