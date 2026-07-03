@@ -839,7 +839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 32;
+    const BUILD_NO = 33;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2874,12 +2874,14 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       sourceNode        = ctx.createBufferSource();
       sourceNode.buffer = audioBuffer;
 
-      // Noise filter sits BEFORE the gain stage so its noise profile (measured
-      // from the raw recording) is at the same scale as the signal it processes.
-      // When disabled, the worklet does zero-latency passthrough.
-      noiseFilterNodeL = createNoiseFilterNode('left');
+      // Only insert the noise-filter worklet when it's actually enabled — even
+      // a bit-exact passthrough worklet appears to color the audio subtly on
+      // some setups, so we keep the graph identical to pre-noise-filter builds
+      // when the checkbox is off. Toggling the checkbox mid-playback only takes
+      // effect on the next Play press.
       sampleGainNode            = ctx.createGain();
       sampleGainNode.gain.value = dbToLinear(inputGainDb);
+      noiseFilterNodeL = noiseFilterEnabled ? createNoiseFilterNode('left') : null;
       if (noiseFilterNodeL) {
         sourceNode.connect(noiseFilterNodeL);
         noiseFilterNodeL.connect(sampleGainNode);
@@ -2985,10 +2987,10 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       rightSourceNode.loop   = true;
       rightSourceNode.loopEnd = rightPaddedDuration;
 
-      // Noise filter before the gain stage — see left-side comment.
-      noiseFilterNodeR = createNoiseFilterNode('right');
+      // Only insert the noise-filter worklet when enabled — see left-side comment.
       rightSampleGainNode            = ctx.createGain();
       rightSampleGainNode.gain.value = dbToLinear(rightInputGainDb);
+      noiseFilterNodeR = noiseFilterEnabled ? createNoiseFilterNode('right') : null;
       if (noiseFilterNodeR) {
         rightSourceNode.connect(noiseFilterNodeR);
         noiseFilterNodeR.connect(rightSampleGainNode);
@@ -4289,8 +4291,8 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     chkNoiseFilter.addEventListener('change', async () => {
       noiseFilterEnabled = chkNoiseFilter.checked;
       if (noiseFilterEnabled) { unlockAndResume(); await ensureWorklet(); }
-      // Post enable state + turn stats stream on/off (~1 report/sec at 48k/H=128 = 375 fps).
       const reportEvery = noiseFilterEnabled ? 375 : 0;
+      const havFilterNode = !!(noiseFilterNodeL || noiseFilterNodeR);
       if (noiseFilterNodeL) {
         noiseFilterNodeL.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
         noiseFilterNodeL.port.postMessage({ type: 'reportEveryFrames', value: reportEvery });
@@ -4298,6 +4300,14 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       if (noiseFilterNodeR) {
         noiseFilterNodeR.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
         noiseFilterNodeR.port.postMessage({ type: 'reportEveryFrames', value: reportEvery });
+      }
+      // If playback is running but the filter node isn't in the graph, we can't
+      // insert/remove without rewiring — surface a hint that the user has to
+      // stop and start playback for the change to take effect.
+      if (isPlaying && !havFilterNode && noiseFilterEnabled) {
+        showError('Press Play again to activate noise filter.');
+      } else if (isPlaying && havFilterNode && !noiseFilterEnabled) {
+        showError('Filter still in graph; press Play again for a fully clean signal.');
       }
     });
 
