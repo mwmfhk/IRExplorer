@@ -739,7 +739,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 21;
+    const BUILD_NO = 22;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2418,12 +2418,23 @@ registerProcessor('recorder-processor', RecorderProcessor);
         return await navigator.mediaDevices.getUserMedia({ audio: true });
       }
     }
+    function micErrorMessage(e) {
+      if (e.name === 'NotAllowedError') {
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        return isIOS
+          ? 'Mic access denied.\n\nFix on iPhone/iPad:\n1. Settings → Safari → Camera & Microphone → Allow\n2. Tap the "aA" icon in the URL bar → Website Settings → Microphone → Allow\n3. Reload this page and tap Calibrate again'
+          : 'Mic access denied. Grant microphone permission in your browser\'s site settings and reload.';
+      }
+      if (e.name === 'NotFoundError') return 'No microphone found on this device.';
+      if (e.name === 'NotReadableError') return 'Microphone is in use by another app.';
+      return 'Mic error: ' + e.name + (e.message ? ' — ' + e.message : '');
+    }
 
     async function startRecording() {
       try {
         stream = await getMicStream();
       } catch (e) {
-        const m = 'Mic error: ' + e.name + (e.message ? ' — ' + e.message : '');
+        const m = micErrorMessage(e);
         setStatus(m); showError(m);
         return;
       }
@@ -2487,7 +2498,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       try {
         rightStream = await getMicStream();
       } catch (e) {
-        const m = 'Mic error: ' + e.name + (e.message ? ' — ' + e.message : '');
+        const m = micErrorMessage(e);
         setRightStatus(m); showError(m); return;
       }
 
@@ -2871,7 +2882,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       try {
         calStream = await getMicStream();
       } catch (e) {
-        const m = 'Mic error: ' + e.name + (e.message ? ' — ' + e.message : '');
+        const m = micErrorMessage(e);
         setRightStatus(m); showError(m); return;
       }
 
@@ -3569,7 +3580,7 @@ registerProcessor('recorder-processor', RecorderProcessor);
       errorToastEl.textContent = msg;
       errorToastEl.classList.add('visible');
       clearTimeout(errorToastTimer);
-      errorToastTimer = setTimeout(() => errorToastEl.classList.remove('visible'), 6000);
+      errorToastTimer = setTimeout(() => errorToastEl.classList.remove('visible'), 12000);
     }
     errorToastEl.addEventListener('click', () => errorToastEl.classList.remove('visible'));
 
