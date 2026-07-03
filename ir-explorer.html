@@ -85,6 +85,14 @@
       user-select: none;
     }
     .sidebar-check input[type="checkbox"] { accent-color: #f59e0b; cursor: pointer; }
+    .audition-btn {
+      background: none; border: none; padding: 0;
+      color: #f59e0b; cursor: pointer;
+      font-size: 0.65rem; margin-left: 0.25rem;
+      opacity: 0.6;
+    }
+    .audition-btn:hover { opacity: 1; }
+    .audition-btn:disabled { opacity: 0.25; cursor: not-allowed; }
 
     .main-content {
       flex: 1;
@@ -623,6 +631,7 @@
       <label class="sidebar-check">
         <input type="checkbox" id="chkNoiseFilter">
         <span>Background Noise Filtering</span>
+        <button type="button" class="audition-btn" id="btnAuditionNoise" title="Play the captured noise profile">&#9654;</button>
       </label>
       <button class="btn-sidebar" id="btnDemo" style="margin-top:0.5rem">&#9654; Demo session</button>
       <div style="flex:1"></div>
@@ -839,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 33;
+    const BUILD_NO = 34;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -874,6 +883,7 @@
     const btnDemo      = document.getElementById('btnDemo');
     const chkAutoGain    = document.getElementById('chkAutoGain');
     const chkNoiseFilter = document.getElementById('chkNoiseFilter');
+    const btnAuditionNoise = document.getElementById('btnAuditionNoise');
     const sessionNotesEl = document.getElementById('sessionNotes');
     const btnAddIr      = document.getElementById('btnAddIr');
     const btnAddIrR     = document.getElementById('btnAddIrR');
@@ -1874,13 +1884,15 @@
     // ── Background noise filter (real-time Wiener) ────────────────────────────
     const NF_W = 512;                     // must match NoiseFilterProcessor.W
     let noiseFilterEnabled = false;
-    let noiseProfileL = null;             // Float32Array of bin magnitudes for left/rhythm
-    let noiseProfileR = null;             // and right/lead
+    let noiseProfileL = null;             // { mag: Float32Array, samples: Float32Array, sr: number }
+    let noiseProfileR = null;
     let noiseFilterNodeL = null;
     let noiseFilterNodeR = null;
+    let auditionSourceNode = null;        // currently-playing audition BufferSource
 
-    // Scan the recorded buffer for its quietest 200 ms window and return the
-    // averaged magnitude spectrum over that window as a per-bin noise floor.
+    // Scan the recorded buffer for its quietest 200 ms window and return both
+    // the averaged magnitude spectrum over that window (the noise floor used
+    // by Wiener) and the raw samples of that window (for auditioning).
     function computeNoiseProfile(buffer) {
       if (!buffer) return null;
       const samples = buffer.getChannelData(0);
@@ -1915,23 +1927,27 @@
       }
       if (frames === 0) return null;
       for (let k = 0; k < numBins; k++) magAvg[k] /= frames;
-      return magAvg;
+
+      const sampleSlice = new Float32Array(samples.subarray(minStart, noiseEnd));
+      return { mag: magAvg, samples: sampleSlice, sr };
     }
 
     function updateNoiseProfile(side) {
       if (side === 'left') {
         noiseProfileL = computeNoiseProfile(audioBuffer);
         if (noiseFilterNodeL && noiseProfileL) {
-          const copy = new Float32Array(noiseProfileL);
+          const copy = new Float32Array(noiseProfileL.mag);
           noiseFilterNodeL.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
         }
       } else {
         noiseProfileR = computeNoiseProfile(rightRawBuffer);
         if (noiseFilterNodeR && noiseProfileR) {
-          const copy = new Float32Array(noiseProfileR);
+          const copy = new Float32Array(noiseProfileR.mag);
           noiseFilterNodeR.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
         }
       }
+      // Enable the audition button whenever we have at least one profile.
+      btnAuditionNoise.disabled = !(noiseProfileL || noiseProfileR);
     }
 
     // Create a noise-filter worklet node with the current profile + enable state.
@@ -1943,7 +1959,7 @@
       catch (e) { return null; }
       const profile = side === 'left' ? noiseProfileL : noiseProfileR;
       if (profile) {
-        const copy = new Float32Array(profile);
+        const copy = new Float32Array(profile.mag);
         node.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
       }
       node.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
@@ -4286,6 +4302,37 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
         applyLevelGain('left', 0);
         applyLevelGain('right', 0);
       }
+    });
+
+    btnAuditionNoise.disabled = true;
+    btnAuditionNoise.addEventListener('click', () => {
+      const parts = [];
+      if (noiseProfileL?.samples) parts.push(noiseProfileL);
+      if (noiseProfileR?.samples) parts.push(noiseProfileR);
+      if (parts.length === 0) { showError('No noise profile — record something first.'); return; }
+      // Stop any currently-playing audition
+      if (auditionSourceNode) { try { auditionSourceNode.stop(); } catch {} auditionSourceNode = null; }
+      unlockAndResume();
+      const ctx = getAudioCtx();
+      // Concatenate available parts with a 200 ms silence gap between them
+      const gap = Math.round(0.2 * ctx.sampleRate);
+      const totalLen = parts.reduce((acc, p) => acc + p.samples.length, 0) + gap * (parts.length - 1);
+      const buf = ctx.createBuffer(1, totalLen, ctx.sampleRate);
+      const ch = buf.getChannelData(0);
+      let off = 0;
+      for (let i = 0; i < parts.length; i++) {
+        ch.set(parts[i].samples, off);
+        off += parts[i].samples.length + (i < parts.length - 1 ? gap : 0);
+      }
+      // Boost by +12 dB so quiet hiss is audible for evaluation; if the
+      // profile accidentally captured actual music, this makes it obvious.
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain(); gain.gain.value = Math.pow(10, 12 / 20);
+      src.connect(gain); gain.connect(ctx.destination);
+      auditionSourceNode = src;
+      src.onended = () => { if (auditionSourceNode === src) auditionSourceNode = null; };
+      src.start();
     });
 
     chkNoiseFilter.addEventListener('change', async () => {
