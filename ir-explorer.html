@@ -848,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 37;
+    const BUILD_NO = 38;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2760,9 +2760,15 @@ function expint1(v) {
 // W=2048, H=128 (93.75% overlap, 16 frames overlap each output sample),
 // periodic Hann on both analysis and synthesis. Bin width 23.4 Hz @ 48k for
 // surgical tonal-noise separation. Per-bin gain from log-magnitude MMSE
-// estimator, decision-directed a-priori SNR, plus 3-tap median smoother
-// across bins to suppress residual musical noise. Latency = W-H = 1920
-// samples (~40ms @ 48k). Zero-latency passthrough when off.
+// estimator with:
+//   • Signal Presence Uncertainty (SPU): multiply by P(H1|Y), the posterior
+//     probability the bin contains signal, for deeper attenuation on
+//     noise-only frames (rests, breaths) without touching active content.
+//   • Decision-directed a-priori SNR for gain stability across frames.
+//   • 3-tap median across bins to suppress isolated-bin musical noise.
+//   • Asymmetric time smoothing (fast attack, slow release) to eliminate
+//     gain-wobble on sustained tones while preserving transients and tails.
+// Latency = W-H = 1920 samples (~40ms @ 48k). Zero-latency passthrough off.
 class NoiseFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -2778,18 +2784,24 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.re      = new Float32Array(this.W);
     this.im      = new Float32Array(this.W);
     this.ola     = new Float32Array(this.W);
-    // Per-bin state for Log-MMSE + decision-directed a-priori SNR
-    this.prevGain = new Float32Array(this.numBins);    // last frame's gain (diagnostics)
-    this.prevSNRhat = new Float32Array(this.numBins);  // last frame's |X_hat|² / σ²_N
-    this.gainScratch  = new Float32Array(this.numBins); // raw per-bin gain before median smoothing
-    this.gammaScratch = new Float32Array(this.numBins); // observed SNR (γ) for post-median DD update
-    for (let k = 0; k < this.numBins; k++) { this.prevGain[k] = 1; this.prevSNRhat[k] = 1; }
+    // Per-bin state for Log-MMSE + SPU + DD + asymmetric time smoothing
+    this.prevGain = new Float32Array(this.numBins);      // last frame's applied gain (diagnostics)
+    this.prevSNRhat = new Float32Array(this.numBins);    // DD: last frame's |X̂|² / σ²_N
+    this.prevSmoothed = new Float32Array(this.numBins);  // last frame's time-smoothed gain
+    this.gainScratch  = new Float32Array(this.numBins);  // per-bin gain scratchpad
+    this.gammaScratch = new Float32Array(this.numBins);  // observed SNR (γ) for DD update
+    for (let k = 0; k < this.numBins; k++) {
+      this.prevGain[k] = 1; this.prevSNRhat[k] = 1; this.prevSmoothed[k] = 1;
+    }
 
     this.enabled = false;
     this.noiseProfileMag = null;                       // Float32Array of magnitudes (numBins)
     this.minGain = 0.03;                               // -30 dB floor (aggressive)
     this.ddAlpha = 0.98;                               // decision-directed smoothing weight
-    this.oversubtract = 4.0;                           // σ²_N multiplier (aggressive attack on marginal bins)
+    this.oversubtract = 4.0;                           // σ²_N multiplier (attack on marginal bins)
+    this.spuQ = 0.3;                                   // SPU prior P(H0) = P(noise-only)
+    this.attackA  = 0.2;                               // gain rising: weight on previous (fast)
+    this.releaseA = 0.75;                              // gain falling: weight on previous (slow)
     this.reportEveryFrames = 0;                        // 0 = off, else post avg gain every N frames
     this.framesSinceReport = 0;
     this.gainSum = 0;
@@ -2804,6 +2816,9 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       else if (data.type === 'minGain')       this.minGain = data.value;
       else if (data.type === 'ddAlpha')       this.ddAlpha = data.value;
       else if (data.type === 'oversubtract')  this.oversubtract = data.value;
+      else if (data.type === 'spuQ')          this.spuQ = data.value;
+      else if (data.type === 'attackA')       this.attackA = data.value;
+      else if (data.type === 'releaseA')      this.releaseA = data.value;
       else if (data.type === 'reportEveryFrames') this.reportEveryFrames = data.value | 0;
     };
   }
@@ -2825,17 +2840,24 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.im.fill(0);
     fft2(this.re, this.im, false);
 
-    // Log-MMSE with decision-directed a-priori SNR + 3-tap median smoother.
+    // Log-MMSE + Signal Presence Uncertainty (SPU) + 3-tap freq median
+    // + asymmetric time smoothing.
+    //
     //   γ = |Y|² / σ²_N                              (a-posteriori SNR)
     //   ξ = α · |X̂_prev|²/σ²_N + (1-α) · max(γ-1,0)  (a-priori, DD-smoothed)
     //   ν = ξ/(1+ξ) · γ
-    //   G = ξ/(1+ξ) · exp(½ · E1(ν))                 (Log-MMSE gain)
-    // Then the raw per-bin gain map is filtered with a 3-tap median across
-    // bins — kills isolated-bin "chirps" that would otherwise show up as
-    // residual musical noise.
+    //   G_MMSE = ξ/(1+ξ) · exp(½ · E1(ν))            (Log-MMSE gain)
+    //   Λ = (q/(1-q)) · 1/(1+ξ) · exp(-ν)
+    //   P(H1|Y) = 1 / (1 + Λ)                        (SPU: sig-present posterior)
+    //   G = G_MMSE · P(H1|Y)
+    //
+    // The gain map is then median-filtered across bins (kill chirps), then
+    // temporally smoothed with fast-attack / slow-release asymmetric
+    // exponential filter (kill wobble on sustains, preserve transients & tails).
     const alpha = this.ddAlpha;
+    const qRatio = this.spuQ / (1 - this.spuQ);
 
-    // Pass 1: raw Log-MMSE gain into scratch
+    // Pass 1: raw Log-MMSE × SPU per-bin gain into scratch
     for (let k = 0; k < this.numBins; k++) {
       const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
       const nfMag = this.noiseProfileMag[k];
@@ -2845,7 +2867,11 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       const xi = Math.max(alpha * this.prevSNRhat[k] + (1 - alpha) * gammaMinus1, 1e-6);
       const xiRatio = xi / (1 + xi);
       const nu = xiRatio * gamma;
-      let g = xiRatio * Math.exp(0.5 * expint1(nu));
+      const gLogMmse = xiRatio * Math.exp(0.5 * expint1(nu));
+      // SPU: multiply by P(H1|Y) = 1/(1+Λ)
+      const lambda = qRatio / (1 + xi) * Math.exp(-nu);
+      const pH1 = 1 / (1 + lambda);
+      let g = gLogMmse * pH1;
       if (!isFinite(g) || g < this.minGain) g = this.minGain;
       if (g > 1) g = 1;
       this.gainScratch[k]  = g;
@@ -2859,10 +2885,20 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       const b = this.gainScratch[k];
       const c = this.gainScratch[k + 1];
       prev = b;
-      // median = a + b + c − max − min
       const mx = a > b ? (a > c ? a : c) : (b > c ? b : c);
       const mn = a < b ? (a < c ? a : c) : (b < c ? b : c);
       this.gainScratch[k] = a + b + c - mx - mn;
+    }
+
+    // Pass 2.5: asymmetric time smoothing — fast rise, slow fall
+    const attA = this.attackA, relA = this.releaseA;
+    for (let k = 0; k < this.numBins; k++) {
+      const g = this.gainScratch[k];
+      const p = this.prevSmoothed[k];
+      const w = g > p ? attA : relA;              // rising: small w (mostly current); falling: large w (mostly prev)
+      const smoothed = w * p + (1 - w) * g;
+      this.prevSmoothed[k] = smoothed;
+      this.gainScratch[k]  = smoothed;
     }
 
     // Pass 3: apply smoothed gain, update DD state, mirror
