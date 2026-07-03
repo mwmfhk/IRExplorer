@@ -848,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 35;
+    const BUILD_NO = 36;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1881,8 +1881,8 @@
       return slots.map(extractSlotChannels);
     }
 
-    // ── Background noise filter (real-time Wiener) ────────────────────────────
-    const NF_W = 512;                     // must match NoiseFilterProcessor.W
+    // ── Background noise filter (real-time Log-MMSE) ─────────────────────────
+    const NF_W = 1024;                    // must match NoiseFilterProcessor.W
     let noiseFilterEnabled = false;
     let noiseProfileL = null;             // { mag: Float32Array, samples: Float32Array, sr: number }
     let noiseProfileR = null;
@@ -2757,16 +2757,20 @@ function expint1(v) {
 }
 
 // Real-time noise reduction via Log-MMSE (Ephraim-Malah 1985) with STFT + OLA.
-// W=512, H=128 (75% overlap), periodic Hann on both analysis and synthesis.
-// Per-bin gain from log-magnitude MMSE estimator, decision-directed a-priori SNR.
-// Latency = W-H = 384 samples (~8ms @ 48k). Zero-latency passthrough when off.
+// W=1024, H=128 (87.5% overlap, 8 frames overlap each output sample), periodic
+// Hann on both analysis and synthesis. Bin width 46.9 Hz @ 48k for tight
+// tonal-noise separation. Per-bin gain from log-magnitude MMSE estimator,
+// decision-directed a-priori SNR, plus 3-tap median smoother across bins to
+// suppress residual musical noise. Latency = W-H = 896 samples (~19ms @ 48k).
+// Zero-latency passthrough when off.
 class NoiseFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.W = 512;
+    this.W = 1024;
     this.H = 128;
     this.numBins = this.W / 2 + 1;
-    this.olaGain = 2 / 3;                              // Hann analysis + Hann synthesis, hop=W/4
+    // 8-frame overlap: ∑ periodic-Hann² at hop=W/8 = 3, so olaGain = 1/3
+    this.olaGain = 1 / 3;
     this.hann = new Float32Array(this.W);
     for (let n = 0; n < this.W; n++) this.hann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / this.W));
     this.history = new Float32Array(this.W - this.H);  // last (W-H) input samples
@@ -2777,6 +2781,8 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     // Per-bin state for Log-MMSE + decision-directed a-priori SNR
     this.prevGain = new Float32Array(this.numBins);    // last frame's gain (diagnostics)
     this.prevSNRhat = new Float32Array(this.numBins);  // last frame's |X_hat|² / σ²_N
+    this.gainScratch  = new Float32Array(this.numBins); // raw per-bin gain before median smoothing
+    this.gammaScratch = new Float32Array(this.numBins); // observed SNR (γ) for post-median DD update
     for (let k = 0; k < this.numBins; k++) { this.prevGain[k] = 1; this.prevSNRhat[k] = 1; }
 
     this.enabled = false;
@@ -2819,17 +2825,17 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.im.fill(0);
     fft2(this.re, this.im, false);
 
-    // Per-bin Log-MMSE gain with decision-directed a-priori SNR estimation.
-    //   γ  = a-posteriori SNR = |Y|² / σ²_N       (observed vs noise variance)
-    //   ξ  = a-priori   SNR   ≈ E[|X|²] / σ²_N    (unknown, estimated via DD)
-    //   DD: ξ = α · |X̂_prev|²/σ²_N + (1-α) · max(γ-1, 0)
-    //   ν  = ξ/(1+ξ) · γ
-    //   G  = ξ/(1+ξ) · exp(½ · E1(ν))
-    // Log-MMSE is the standard modern denoiser — significantly less musical
-    // noise than Wiener at the same measured SNR gain.
+    // Log-MMSE with decision-directed a-priori SNR + 3-tap median smoother.
+    //   γ = |Y|² / σ²_N                              (a-posteriori SNR)
+    //   ξ = α · |X̂_prev|²/σ²_N + (1-α) · max(γ-1,0)  (a-priori, DD-smoothed)
+    //   ν = ξ/(1+ξ) · γ
+    //   G = ξ/(1+ξ) · exp(½ · E1(ν))                 (Log-MMSE gain)
+    // Then the raw per-bin gain map is filtered with a 3-tap median across
+    // bins — kills isolated-bin "chirps" that would otherwise show up as
+    // residual musical noise.
     const alpha = this.ddAlpha;
-    let frameGainSum = 0;
-    let frameGainMin = 1;
+
+    // Pass 1: raw Log-MMSE gain into scratch
     for (let k = 0; k < this.numBins; k++) {
       const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
       const nfMag = this.noiseProfileMag[k];
@@ -2842,14 +2848,34 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       let g = xiRatio * Math.exp(0.5 * expint1(nu));
       if (!isFinite(g) || g < this.minGain) g = this.minGain;
       if (g > 1) g = 1;
-      // Update decision-directed state: |X̂|²/σ²_N = g² · γ
-      this.prevSNRhat[k] = g * g * gamma;
+      this.gainScratch[k]  = g;
+      this.gammaScratch[k] = gamma;
+    }
+
+    // Pass 2: in-place 3-tap median across bins (leave DC + Nyquist untouched)
+    let prev = this.gainScratch[0];
+    for (let k = 1; k < this.numBins - 1; k++) {
+      const a = prev;
+      const b = this.gainScratch[k];
+      const c = this.gainScratch[k + 1];
+      prev = b;
+      // median = a + b + c − max − min
+      const mx = a > b ? (a > c ? a : c) : (b > c ? b : c);
+      const mn = a < b ? (a < c ? a : c) : (b < c ? b : c);
+      this.gainScratch[k] = a + b + c - mx - mn;
+    }
+
+    // Pass 3: apply smoothed gain, update DD state, mirror
+    let frameGainSum = 0;
+    let frameGainMin = 1;
+    for (let k = 0; k < this.numBins; k++) {
+      const g = this.gainScratch[k];
+      this.prevSNRhat[k] = g * g * this.gammaScratch[k];
       this.prevGain[k] = g;
       frameGainSum += g;
       if (g < frameGainMin) frameGainMin = g;
       this.re[k] *= g;
       this.im[k] *= g;
-      // Hermitian-symmetric mirror for real-valued output
       if (k > 0 && k < this.W / 2) {
         this.re[this.W - k] =  this.re[k];
         this.im[this.W - k] = -this.im[k];
