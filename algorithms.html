@@ -198,6 +198,7 @@
   <div class="toc-group">Data Format</div>
   <ol start="12">
     <li><a href="#fileformat">Session File Format (.irz)</a></li>
+    <li><a href="#wavexport">Exported IR File Format (.wav)</a></li>
   </ol>
 </nav>
 
@@ -1287,6 +1288,86 @@ meta.rightIrSlots = [{
 
   <div class="note">
     <strong>Legacy JSON path.</strong> Pre-<em>v2</em> sessions were stored as a single <code>.json</code> file with all audio inlined as base64 strings. That format is still supported on load (via a <code>decBuf</code> code path), but the zip format is 3–4× smaller and much faster to parse. The version field in <code>session.json</code> lets the loader route to the appropriate path.
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<section id="wavexport">
+  <h2>Section 13 — Data format</h2>
+  <h3>Exported IR File Format (.wav)</h3>
+
+  <p>Export IR produces a standard <strong>uncompressed PCM WAV</strong> file — the format every guitar amp modeler, DAW plugin, and hardware IR loader universally accepts. No custom container, no compression, no metadata quirks.</p>
+
+  <h4>Byte layout</h4>
+
+  <p>Standard RIFF/WAVE container. The header is exactly <strong>44 bytes</strong> followed by interleaved 16-bit sample data:</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 640 340" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="10" fill="#333">
+        <!-- Header -->
+        <text x="20" y="20" font-size="10" fill="#aaa" letter-spacing="0.1em">44-BYTE HEADER</text>
+
+        <!-- RIFF chunk (12 bytes) -->
+        <rect x="20" y="35" width="600" height="45" fill="#fff7ed" stroke="#f59e0b"/>
+        <text x="30" y="52" font-weight="bold" fill="#92400e">RIFF chunk (12 bytes)</text>
+        <text x="30" y="70" font-size="9" fill="#555">"RIFF" (4)  ·  file size − 8 as uint32 LE (4)  ·  "WAVE" (4)</text>
+
+        <!-- fmt subchunk (24 bytes) -->
+        <rect x="20" y="85" width="600" height="90" fill="#fff7ed" stroke="#f59e0b"/>
+        <text x="30" y="102" font-weight="bold" fill="#92400e">fmt subchunk (24 bytes)</text>
+        <text x="30" y="119" font-size="9" fill="#555">"fmt " (4)  ·  subchunk size = 16 (4)  ·  audio format = 1 [PCM] (2)</text>
+        <text x="30" y="134" font-size="9" fill="#555">channels: 1 or 2 (2)  ·  sample rate: 48000 (4)  ·  byte rate (4)</text>
+        <text x="30" y="149" font-size="9" fill="#555">block align: channels × 2 (2)  ·  bits per sample: 16 (2)</text>
+        <text x="30" y="166" font-size="8" fill="#888" font-style="italic">all multi-byte values little-endian</text>
+
+        <!-- data subchunk header (8 bytes) -->
+        <rect x="20" y="180" width="600" height="45" fill="#fff7ed" stroke="#f59e0b"/>
+        <text x="30" y="198" font-weight="bold" fill="#92400e">data subchunk header (8 bytes)</text>
+        <text x="30" y="216" font-size="9" fill="#555">"data" (4)  ·  data size = numSamples × channels × 2 (4)</text>
+
+        <!-- Data body -->
+        <text x="20" y="248" font-size="10" fill="#aaa" letter-spacing="0.1em">SAMPLE DATA (INTERLEAVED · 16-BIT SIGNED LE)</text>
+
+        <rect x="20" y="260" width="600" height="60" fill="#f0fdf4" stroke="#10b981"/>
+        <g font-family="SF Mono, monospace" font-size="10" fill="#065f46">
+          <text x="35" y="285">int16 L₀  int16 R₀ | int16 L₁  int16 R₁ | int16 L₂  int16 R₂ | ... (stereo)</text>
+          <text x="35" y="305">int16 s₀  |  int16 s₁  |  int16 s₂  |  int16 s₃  |  ...  (mono)</text>
+        </g>
+      </g>
+    </svg>
+    <div class="caption">44-byte header + interleaved 16-bit sample data. Total file size = 44 + numSamples × channels × 2 bytes.</div>
+  </div>
+
+  <h4>Sample encoding</h4>
+
+  <p>The blended IR lives in memory as <code>Float32</code> samples in [−1, +1]. Conversion to 16-bit PCM uses the standard asymmetric mapping:</p>
+
+  <pre><code>const s = Math.max(-1, Math.min(1, chData[ch][n]));
+v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
+//                     ^^^^^^^^         ^^^^^^^
+//              negative range          positive range
+//              (0 → -32768)            (0 → 32767)</code></pre>
+
+  <p>Negative and positive full-scale are asymmetric by design: signed 16-bit has one more negative step (<code>-32768</code>) than positive (<code>32767</code>). Using <code>×32768</code> on negatives lets the encoding reach the true minimum without clipping; positives use <code>×32767</code> to avoid overflowing to <code>+32768</code> (which wraps to a large negative value in int16).</p>
+
+  <h4>Peak normalization</h4>
+
+  <p>Before the float→int16 conversion, the blended output is peak-normalized so its absolute-maximum sample equals exactly 1.0 (0 dBFS):</p>
+
+  <div class="math">
+    peak = max<sub>ch, n</sub> |chData[ch][n]|<br>
+    if peak &gt; 0 : chData[ch][n] ÷= peak
+  </div>
+
+  <p>This gives the loudest usable IR without clipping — downstream loaders always trim further as needed. The normalization runs <em>after</em> the phase-alignment step from Section 2, so any peak shifts introduced by min-phase / cross-correlation / peak-align are already accounted for by the time we normalize.</p>
+
+  <h4>What determines channels and sample rate</h4>
+
+  <p>Channels come from the blended AudioBuffer — mono if every loaded IR is mono (the typical case for guitar cabs), stereo if any is stereo. Sample rate is the current AudioContext's rate, typically <strong>48 kHz</strong> on modern devices (iPhone, most Chrome/Edge setups) or <strong>44.1 kHz</strong> on older Macs. If you save on one device and load on another, the WAV file carries its own sample rate — any downstream tool will read and use it directly.</p>
+
+  <div class="note">
+    <strong>Why 16-bit and not 24 or 32?</strong> 16-bit at 96 dB dynamic range is well below the noise floor of any speaker cabinet capture (typical cab IRs measure ~60 dB SNR). 24-bit float would double the file size for no audible benefit. Every IR loader on the market handles PCM16 WAV; 24-bit and 32-float support is less universal, especially on older hardware.
   </div>
 </section>
 
