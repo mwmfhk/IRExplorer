@@ -411,6 +411,70 @@
     .btn-export-select:disabled { opacity: 0.35; cursor: not-allowed; }
 
     .btn-bypass { background: #f0f0f0; color: #111; border: 1px solid #e0e0e0; white-space: nowrap; min-width: 5.8rem; }
+
+    /* Small icon-only button next to Export IR */
+    .btn-ir-plot {
+      background: #f0f0f0; color: #111;
+      border: 1px solid #e0e0e0; border-radius: 8px;
+      padding: 0.5rem 0.55rem;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .btn-ir-plot:hover { background: #e8e8e8; }
+    .btn-ir-plot:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-ir-plot svg { display: block; }
+
+    /* Modal overlay for IR plot */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 9998;
+      display: none;
+      align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.25rem 1.25rem 1rem;
+      width: min(94vw, 780px);
+      max-height: 92vh;
+      display: flex; flex-direction: column;
+      gap: 0.85rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 0.5rem; flex-wrap: wrap;
+    }
+    .modal-tabs { display: flex; gap: 0.4rem; }
+    .modal-tab {
+      background: #f0f0f0; color: #111;
+      border: 1px solid #e0e0e0; border-radius: 6px;
+      padding: 0.45rem 0.9rem;
+      font-family: inherit; font-size: 0.7rem;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer;
+    }
+    .modal-tab.active {
+      background: #fff7ed; color: #92400e; border-color: #f59e0b;
+    }
+    .modal-close {
+      background: none; border: none;
+      font-size: 1.1rem; color: #555; cursor: pointer;
+      padding: 0.25rem 0.6rem; line-height: 1;
+    }
+    .modal-canvas {
+      width: 100%;
+      height: min(60vh, 420px);
+      border: 1px solid #eee; border-radius: 8px;
+      display: block; touch-action: none;
+    }
+    .modal-info {
+      font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase;
+      color: #999; text-align: center;
+    }
     .btn-bypass:hover { background: #e8e8e8; }
     .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 
@@ -610,6 +674,9 @@
           <button class="btn-add-ir" id="btnAddIr">Add IR</button>
           <button class="btn-bypass" id="btnBypass">Bypass</button>
           <button class="btn-export-ir" id="btnExportIr" disabled>Export IR</button>
+          <button class="btn-ir-plot" id="btnIrPlot" disabled title="View IR plots" aria-label="View IR plots">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13 L2 3 M2 13 L14 13 M4 10 L7 6 L10 8 L13 4" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -676,6 +743,9 @@
           <button class="btn-add-ir" id="btnAddIrR">Add IR</button>
           <button class="btn-bypass" id="btnBypassR">Bypass</button>
           <button class="btn-export-ir" id="btnExportIrR" disabled>Export IR</button>
+          <button class="btn-ir-plot" id="btnIrPlotR" disabled title="View IR plots" aria-label="View IR plots">
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 13 L2 3 M2 13 L14 13 M4 10 L7 6 L10 8 L13 4" stroke="currentColor" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
         <div class="post-divider">
           <hr class="post-hr">
@@ -729,6 +799,20 @@
 
   <div class="error-toast" id="errorToast"></div>
 
+  <div class="modal-overlay" id="irPlotModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-tabs">
+          <button class="modal-tab active" id="tabTime">Time Domain</button>
+          <button class="modal-tab" id="tabFreq">Frequency Domain</button>
+        </div>
+        <button class="modal-close" id="irPlotClose" aria-label="Close">✕</button>
+      </div>
+      <canvas class="modal-canvas" id="irPlotCanvas"></canvas>
+      <div class="modal-info" id="irPlotInfo"></div>
+    </div>
+  </div>
+
   <div class="slot-norm-popup" id="slotNormPopup">
     <span class="norm-title">Norm Gain</span>
     <canvas class="norm-knob-canvas" id="normKnobCanvas" width="36" height="36"></canvas>
@@ -739,7 +823,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 22;
+    const BUILD_NO = 23;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -777,6 +861,8 @@
     const btnAddIrR     = document.getElementById('btnAddIrR');
     const btnExportIr   = document.getElementById('btnExportIr');
     const btnExportIrR  = document.getElementById('btnExportIrR');
+    const btnIrPlot     = document.getElementById('btnIrPlot');
+    const btnIrPlotR    = document.getElementById('btnIrPlotR');
     const alignSelect   = document.getElementById('alignSelect');
     const alignSelectR  = document.getElementById('alignSelectR');
     const slotRemoveBtn = document.getElementById('slotRemoveBtn');
@@ -1207,11 +1293,13 @@
     function drawPolygon() {
       _drawPolygon(blendCanvas, irSlots, blendPt);
       btnExportIr.disabled = irSlots.length === 0;
+      btnIrPlot.disabled   = irSlots.length === 0;
       rebuildAlignOptions('left');
     }
     function drawRightPolygon() {
       _drawPolygon(blendCanvasR, rightIrSlots, rightBlendPt);
       btnExportIrR.disabled = rightIrSlots.length === 0;
+      btnIrPlotR.disabled   = rightIrSlots.length === 0;
       rebuildAlignOptions('right');
     }
 
@@ -2016,6 +2104,211 @@
     alignSelectR.addEventListener('change', () => {
       rightAlignMode = alignSelectR.value; syncConvolvers('right');
     });
+
+    // ── IR plot modal ─────────────────────────────────────────────────────────
+    const irPlotModal  = document.getElementById('irPlotModal');
+    const irPlotClose  = document.getElementById('irPlotClose');
+    const irPlotCanvas = document.getElementById('irPlotCanvas');
+    const irPlotInfo   = document.getElementById('irPlotInfo');
+    const tabTime      = document.getElementById('tabTime');
+    const tabFreq      = document.getElementById('tabFreq');
+    let irPlotSide = 'left';
+    let irPlotMode = 'time';
+
+    function openIrPlot(side) {
+      const slots = side === 'left' ? irSlots : rightIrSlots;
+      if (slots.length === 0) return;
+      irPlotSide = side;
+      irPlotMode = 'time';
+      tabTime.classList.add('active');
+      tabFreq.classList.remove('active');
+      irPlotModal.classList.add('visible');
+      // Defer draw so layout is settled and canvas has its final size
+      requestAnimationFrame(drawIrPlot);
+    }
+    function closeIrPlot() { irPlotModal.classList.remove('visible'); }
+
+    btnIrPlot.addEventListener('click',  () => openIrPlot('left'));
+    btnIrPlotR.addEventListener('click', () => openIrPlot('right'));
+    irPlotClose.addEventListener('click', closeIrPlot);
+    irPlotModal.addEventListener('click', (e) => { if (e.target === irPlotModal) closeIrPlot(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeIrPlot(); });
+    tabTime.addEventListener('click', () => {
+      if (irPlotMode === 'time') return;
+      irPlotMode = 'time';
+      tabTime.classList.add('active'); tabFreq.classList.remove('active');
+      drawIrPlot();
+    });
+    tabFreq.addEventListener('click', () => {
+      if (irPlotMode === 'freq') return;
+      irPlotMode = 'freq';
+      tabFreq.classList.add('active'); tabTime.classList.remove('active');
+      drawIrPlot();
+    });
+    window.addEventListener('resize', () => { if (irPlotModal.classList.contains('visible')) drawIrPlot(); });
+
+    const MODE_LABELS = { 'none': 'No Correction', 'peak': 'Align Peak', 'min-phase': 'Min-Phase' };
+    function alignModeLabel(m) {
+      if (m.startsWith('cross-')) return 'Cross Align ' + (parseInt(m.slice(6), 10) + 1);
+      return MODE_LABELS[m] || m;
+    }
+
+    function drawIrPlot() {
+      const slots = irPlotSide === 'left' ? irSlots : rightIrSlots;
+      const bp    = irPlotSide === 'left' ? blendPt : rightBlendPt;
+      const mode  = irPlotSide === 'left' ? leftAlignMode : rightAlignMode;
+      if (slots.length === 0) return;
+      const blended = computeBlendedIR(slots, bp, mode);
+      const samples = blended.chData[0];
+      const sr = blended.sr;
+
+      // Resize canvas to displayed size (DPR-scaled)
+      const dpr = window.devicePixelRatio || 1;
+      const rect = irPlotCanvas.getBoundingClientRect();
+      irPlotCanvas.width  = Math.round(rect.width * dpr);
+      irPlotCanvas.height = Math.round(rect.height * dpr);
+      const ctx = irPlotCanvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const sideName = irPlotSide === 'left' ? 'Rhythm' : 'Lead';
+      const modeName = alignModeLabel(mode);
+
+      if (irPlotMode === 'time') {
+        drawTimeDomain(ctx, W, H, samples, sr);
+        const ms = (blended.numSamples / sr * 1000).toFixed(1);
+        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · ${blended.numSamples} samples (${ms} ms @ ${sr} Hz)`;
+      } else {
+        drawFreqDomain(ctx, W, H, samples, sr);
+        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · magnitude spectrum, log-frequency`;
+      }
+    }
+
+    // ── Time-domain waveform plot ────────────────────────────────────────────
+    function drawTimeDomain(ctx, W, H, samples, sr) {
+      const N = samples.length;
+      const padL = 44, padR = 12, padT = 12, padB = 26;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+      const midY = padT + plotH / 2;
+
+      // Grid: horizontal center + 0.5 lines
+      ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padL, midY); ctx.lineTo(padL + plotW, midY);
+      ctx.moveTo(padL, padT + plotH * 0.25); ctx.lineTo(padL + plotW, padT + plotH * 0.25);
+      ctx.moveTo(padL, padT + plotH * 0.75); ctx.lineTo(padL + plotW, padT + plotH * 0.75);
+      ctx.stroke();
+
+      // Y-axis labels
+      ctx.fillStyle = '#aaa'; ctx.font = '10px SF Mono, monospace'; ctx.textBaseline = 'middle';
+      ctx.textAlign = 'right';
+      ctx.fillText('+1',    padL - 6, padT);
+      ctx.fillText('+0.5',  padL - 6, padT + plotH * 0.25);
+      ctx.fillText(' 0',    padL - 6, midY);
+      ctx.fillText('−0.5',  padL - 6, padT + plotH * 0.75);
+      ctx.fillText('−1',    padL - 6, padT + plotH);
+
+      // Waveform: per-column min/max envelope
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let x = 0; x < plotW; x++) {
+        const s = Math.floor(x * N / plotW);
+        const e = Math.max(s + 1, Math.floor((x + 1) * N / plotW));
+        let mn = Infinity, mx = -Infinity;
+        for (let i = s; i < e && i < N; i++) {
+          const v = samples[i];
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        const y1 = midY - mx * (plotH / 2);
+        const y2 = midY - mn * (plotH / 2);
+        ctx.moveTo(padL + x, y1);
+        ctx.lineTo(padL + x, y2 + (y1 === y2 ? 1 : 0));
+      }
+      ctx.stroke();
+
+      // X-axis labels: time in ms
+      ctx.strokeStyle = '#eee';
+      ctx.beginPath();
+      ctx.moveTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH);
+      ctx.stroke();
+      ctx.fillStyle = '#aaa'; ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+      const totalMs = N / sr * 1000;
+      for (let i = 0; i <= 5; i++) {
+        const t = i * totalMs / 5;
+        const x = padL + i * plotW / 5;
+        ctx.fillText(t.toFixed(1) + ' ms', x, padT + plotH + 6);
+      }
+    }
+
+    // ── Frequency-domain magnitude plot ──────────────────────────────────────
+    function drawFreqDomain(ctx, W, H, samples, sr) {
+      const padL = 44, padR = 12, padT = 12, padB = 26;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+
+      // FFT the samples (zero-padded to at least 8192 for smooth curve)
+      const M = nextPow2(Math.max(samples.length, 8192));
+      const re = new Float32Array(M), im = new Float32Array(M);
+      re.set(samples);
+      fftRadix2(re, im, false);
+
+      const nyquist = sr / 2;
+      const fMin = 20, fMax = Math.min(nyquist, 20000);
+      const dbMin = -60, dbMax = 6;
+      const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
+
+      // dB grid + labels
+      ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
+      ctx.fillStyle = '#aaa'; ctx.font = '10px SF Mono, monospace';
+      ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+      for (let db = -60; db <= 0; db += 12) {
+        const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+        ctx.fillText(db + ' dB', padL - 6, y);
+      }
+
+      // Log-freq vertical grid + labels
+      const decades = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+      ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+      for (const f of decades) {
+        if (f < fMin || f > fMax) continue;
+        const x = padL + (Math.log10(f) - logMin) / (logMax - logMin) * plotW;
+        ctx.strokeStyle = (f === 100 || f === 1000 || f === 10000) ? '#e0e0e0' : '#f2f2f2';
+        ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+        ctx.fillStyle = '#aaa';
+        const label = f >= 1000 ? (f / 1000) + 'k' : String(f);
+        ctx.fillText(label, x, padT + plotH + 6);
+      }
+
+      // Bottom axis
+      ctx.strokeStyle = '#eee';
+      ctx.beginPath(); ctx.moveTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+      // Magnitude curve — for each pixel x, sample the bin at that frequency
+      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (let px = 0; px <= plotW; px++) {
+        const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
+        const bin = f * M / sr;
+        const b0 = Math.floor(bin), b1 = b0 + 1;
+        if (b0 < 1 || b1 >= M / 2) continue;
+        const t = bin - b0;
+        const m0 = Math.sqrt(re[b0]*re[b0] + im[b0]*im[b0]);
+        const m1 = Math.sqrt(re[b1]*re[b1] + im[b1]*im[b1]);
+        const mag = m0 + (m1 - m0) * t;
+        let db = 20 * Math.log10(Math.max(mag, 1e-10));
+        if (db < dbMin) db = dbMin;
+        if (db > dbMax) db = dbMax;
+        const x = padL + px;
+        const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
 
     // ── Unified document listeners ─────────────────────────────────────────────
     document.addEventListener('pointermove', e => {
