@@ -848,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 34;
+    const BUILD_NO = 35;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2743,10 +2743,23 @@ function fft2(re, im, inverse) {
   if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
 }
 
-// Real-time Wiener-filter noise reduction with STFT + overlap-add.
-// W=512, H=128 (75% overlap), periodic Hann on both analysis and synthesis,
-// COLA normalization factor 2/3. Latency = W-H = 384 samples (~8ms @ 48k).
-// Passes through with zero latency when disabled or no noise profile posted.
+// Exponential integral E1(v) = ∫_v^∞ e^-t / t dt via Abramowitz & Stegun 5.1.53
+// (0 < v ≤ 1, polynomial) and 5.1.56 (v > 1, rational Padé). Errors < 6e-5.
+function expint1(v) {
+  if (v <= 0) return 1e20;
+  if (v <= 1) {
+    return -Math.log(v) + ((((( 0.00107857 * v - 0.00976004) * v + 0.05519968) * v - 0.24991055) * v + 0.99999193) * v - 0.57721566);
+  }
+  const v2 = v * v, v3 = v2 * v, v4 = v3 * v;
+  const num = v4 +  8.5733287401 * v3 + 18.059016973  * v2 +  8.6347608925 * v + 0.2677737343;
+  const den = v4 +  9.5733223454 * v3 + 25.6329561486 * v2 + 21.0996530827 * v + 3.9584969228;
+  return Math.exp(-v) / v * (num / den);
+}
+
+// Real-time noise reduction via Log-MMSE (Ephraim-Malah 1985) with STFT + OLA.
+// W=512, H=128 (75% overlap), periodic Hann on both analysis and synthesis.
+// Per-bin gain from log-magnitude MMSE estimator, decision-directed a-priori SNR.
+// Latency = W-H = 384 samples (~8ms @ 48k). Zero-latency passthrough when off.
 class NoiseFilterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -2761,14 +2774,16 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.re      = new Float32Array(this.W);
     this.im      = new Float32Array(this.W);
     this.ola     = new Float32Array(this.W);
-    this.prevGain = new Float32Array(this.numBins);
-    for (let k = 0; k < this.numBins; k++) this.prevGain[k] = 1;
+    // Per-bin state for Log-MMSE + decision-directed a-priori SNR
+    this.prevGain = new Float32Array(this.numBins);    // last frame's gain (diagnostics)
+    this.prevSNRhat = new Float32Array(this.numBins);  // last frame's |X_hat|² / σ²_N
+    for (let k = 0; k < this.numBins; k++) { this.prevGain[k] = 1; this.prevSNRhat[k] = 1; }
 
     this.enabled = false;
     this.noiseProfileMag = null;                       // Float32Array of magnitudes (numBins)
-    this.minGain = 0.03;                               // ~ -30 dB floor
-    this.smoothingAlpha = 0.3;                         // time smoothing weight for prev gain
-    this.oversubtract = 6.0;                           // effective noise^2 * this in Wiener denominator
+    this.minGain = 0.1;                                // -20 dB floor (Log-MMSE goes deep naturally)
+    this.ddAlpha = 0.98;                               // decision-directed smoothing weight
+    this.oversubtract = 1.5;                           // σ²_N multiplier (mild for Log-MMSE)
     this.reportEveryFrames = 0;                        // 0 = off, else post avg gain every N frames
     this.framesSinceReport = 0;
     this.gainSum = 0;
@@ -2781,7 +2796,7 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
         this.noiseProfileMag = data.value ? new Float32Array(data.value) : null;
       }
       else if (data.type === 'minGain')       this.minGain = data.value;
-      else if (data.type === 'smoothing')     this.smoothingAlpha = data.value;
+      else if (data.type === 'ddAlpha')       this.ddAlpha = data.value;
       else if (data.type === 'oversubtract')  this.oversubtract = data.value;
       else if (data.type === 'reportEveryFrames') this.reportEveryFrames = data.value | 0;
     };
@@ -2804,15 +2819,31 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.im.fill(0);
     fft2(this.re, this.im, false);
 
-    // Per-bin Wiener gain with over-subtraction + min-gain floor + time smoothing
+    // Per-bin Log-MMSE gain with decision-directed a-priori SNR estimation.
+    //   γ  = a-posteriori SNR = |Y|² / σ²_N       (observed vs noise variance)
+    //   ξ  = a-priori   SNR   ≈ E[|X|²] / σ²_N    (unknown, estimated via DD)
+    //   DD: ξ = α · |X̂_prev|²/σ²_N + (1-α) · max(γ-1, 0)
+    //   ν  = ξ/(1+ξ) · γ
+    //   G  = ξ/(1+ξ) · exp(½ · E1(ν))
+    // Log-MMSE is the standard modern denoiser — significantly less musical
+    // noise than Wiener at the same measured SNR gain.
+    const alpha = this.ddAlpha;
     let frameGainSum = 0;
     let frameGainMin = 1;
     for (let k = 0; k < this.numBins; k++) {
       const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
-      const noise2 = this.noiseProfileMag[k] * this.noiseProfileMag[k];
-      let g = mag2 / (mag2 + this.oversubtract * noise2 + 1e-18);
-      if (g < this.minGain) g = this.minGain;
-      g = this.smoothingAlpha * this.prevGain[k] + (1 - this.smoothingAlpha) * g;
+      const nfMag = this.noiseProfileMag[k];
+      const noise2 = nfMag * nfMag * this.oversubtract + 1e-18;
+      const gamma = mag2 / noise2;
+      const gammaMinus1 = gamma > 1 ? gamma - 1 : 0;
+      const xi = Math.max(alpha * this.prevSNRhat[k] + (1 - alpha) * gammaMinus1, 1e-6);
+      const xiRatio = xi / (1 + xi);
+      const nu = xiRatio * gamma;
+      let g = xiRatio * Math.exp(0.5 * expint1(nu));
+      if (!isFinite(g) || g < this.minGain) g = this.minGain;
+      if (g > 1) g = 1;
+      // Update decision-directed state: |X̂|²/σ²_N = g² · γ
+      this.prevSNRhat[k] = g * g * gamma;
       this.prevGain[k] = g;
       frameGainSum += g;
       if (g < frameGainMin) frameGainMin = g;
