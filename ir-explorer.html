@@ -839,7 +839,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 31;
+    const BUILD_NO = 32;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1947,6 +1947,14 @@
         node.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
       }
       node.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+      // Wire up diagnostic stats stream
+      node.port.onmessage = (e) => {
+        if (e.data && e.data.type === 'stats') {
+          const dbAvg = 20 * Math.log10(Math.max(e.data.avgGain, 1e-6));
+          const dbMin = 20 * Math.log10(Math.max(e.data.minGainSeen, 1e-6));
+          showError(`Noise filter ${side}: avg gain ${dbAvg.toFixed(1)} dB · deepest bin ${dbMin.toFixed(1)} dB`);
+        }
+      };
       return node;
     }
 
@@ -2742,9 +2750,14 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
 
     this.enabled = false;
     this.noiseProfileMag = null;                       // Float32Array of magnitudes (numBins)
-    this.minGain = 0.1;                                // ~ -20 dB floor (more aggressive)
-    this.smoothingAlpha = 0.5;                         // time smoothing weight for prev gain
-    this.oversubtract = 2.0;                           // spectral over-subtraction factor
+    this.minGain = 0.03;                               // ~ -30 dB floor
+    this.smoothingAlpha = 0.3;                         // time smoothing weight for prev gain
+    this.oversubtract = 6.0;                           // effective noise^2 * this in Wiener denominator
+    this.reportEveryFrames = 0;                        // 0 = off, else post avg gain every N frames
+    this.framesSinceReport = 0;
+    this.gainSum = 0;
+    this.gainMin = 1;
+    this.gainCount = 0;
 
     this.port.onmessage = ({ data }) => {
       if (data.type === 'enable')     this.enabled = !!data.value;
@@ -2754,6 +2767,7 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       else if (data.type === 'minGain')       this.minGain = data.value;
       else if (data.type === 'smoothing')     this.smoothingAlpha = data.value;
       else if (data.type === 'oversubtract')  this.oversubtract = data.value;
+      else if (data.type === 'reportEveryFrames') this.reportEveryFrames = data.value | 0;
     };
   }
 
@@ -2775,6 +2789,8 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     fft2(this.re, this.im, false);
 
     // Per-bin Wiener gain with over-subtraction + min-gain floor + time smoothing
+    let frameGainSum = 0;
+    let frameGainMin = 1;
     for (let k = 0; k < this.numBins; k++) {
       const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
       const noise2 = this.noiseProfileMag[k] * this.noiseProfileMag[k];
@@ -2782,12 +2798,28 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       if (g < this.minGain) g = this.minGain;
       g = this.smoothingAlpha * this.prevGain[k] + (1 - this.smoothingAlpha) * g;
       this.prevGain[k] = g;
+      frameGainSum += g;
+      if (g < frameGainMin) frameGainMin = g;
       this.re[k] *= g;
       this.im[k] *= g;
       // Hermitian-symmetric mirror for real-valued output
       if (k > 0 && k < this.W / 2) {
         this.re[this.W - k] =  this.re[k];
         this.im[this.W - k] = -this.im[k];
+      }
+    }
+    if (this.reportEveryFrames > 0) {
+      this.gainSum += frameGainSum / this.numBins;
+      if (frameGainMin < this.gainMin) this.gainMin = frameGainMin;
+      this.gainCount++;
+      this.framesSinceReport++;
+      if (this.framesSinceReport >= this.reportEveryFrames) {
+        this.port.postMessage({
+          type: 'stats',
+          avgGain: this.gainSum / this.gainCount,
+          minGainSeen: this.gainMin
+        });
+        this.gainSum = 0; this.gainMin = 1; this.gainCount = 0; this.framesSinceReport = 0;
       }
     }
 
@@ -4256,11 +4288,17 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
 
     chkNoiseFilter.addEventListener('change', async () => {
       noiseFilterEnabled = chkNoiseFilter.checked;
-      // Ensure worklet is loaded so the filter can be inserted next time playback starts.
       if (noiseFilterEnabled) { unlockAndResume(); await ensureWorklet(); }
-      // If playback is live, message the existing filter nodes so the change is heard immediately.
-      if (noiseFilterNodeL) noiseFilterNodeL.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
-      if (noiseFilterNodeR) noiseFilterNodeR.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+      // Post enable state + turn stats stream on/off (~1 report/sec at 48k/H=128 = 375 fps).
+      const reportEvery = noiseFilterEnabled ? 375 : 0;
+      if (noiseFilterNodeL) {
+        noiseFilterNodeL.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+        noiseFilterNodeL.port.postMessage({ type: 'reportEveryFrames', value: reportEvery });
+      }
+      if (noiseFilterNodeR) {
+        noiseFilterNodeR.port.postMessage({ type: 'enable', value: noiseFilterEnabled });
+        noiseFilterNodeR.port.postMessage({ type: 'reportEveryFrames', value: reportEvery });
+      }
     });
 
     // ── Status ────────────────────────────────────────────────────────────────
