@@ -853,7 +853,7 @@
       </div>
       <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasL"></canvas>
       <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasR"></canvas>
-      <div class="modal-info">Averaged magnitude spectrum of the quietest 200 ms of each recording — the noise floor used by the Log-MMSE denoiser. Each plot is peak-normalized to 0 dB so you can compare the shape.</div>
+      <div class="modal-info">Averaged magnitude spectrum of the quietest 200 ms of each recording — the noise floor used by the Log-MMSE denoiser. Absolute dBFS · 0 dB = full-scale sine amplitude.</div>
     </div>
   </div>
 
@@ -867,7 +867,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 46;
+    const BUILD_NO = 47;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -4469,14 +4469,18 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       const M = (numBins - 1) * 2;              // FFT length that produced this mag array
       const nyquist = sr / 2;
       const fMin = 20, fMax = Math.min(nyquist, 20000);
-      const dbMin = -60, dbMax = 0;             // peak-normalized: top = 0 dB
+      const dbMin = -100, dbMax = 0;            // absolute dBFS (0 dB = full-scale sine amplitude)
       const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
+      // Reference magnitude: Hann-windowed FFT of a full-scale sine has |Y| ≈ NF_W/4.
+      // Dividing by this yields dBFS-relative values that are identical across
+      // platforms regardless of context sample rate.
+      const dbfsRef = mag.length > 1 ? (mag.length - 1) * 2 / 4 : 1;   // = NF_W / 4
 
       // dB grid + labels
       ctx.strokeStyle = '#eee'; ctx.lineWidth = 1;
       ctx.fillStyle = '#aaa'; ctx.font = '10px SF Mono, monospace';
       ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
-      for (let db = -60; db <= 0; db += 12) {
+      for (let db = -100; db <= 0; db += 20) {
         const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
         ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
         ctx.fillText(db + ' dB', padL - 6, y);
@@ -4499,29 +4503,21 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       ctx.strokeStyle = '#eee';
       ctx.beginPath(); ctx.moveTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
 
-      // Compute dB per column with peak-normalization
-      const dbs = new Array(plotW + 1);
-      let maxDb = -Infinity;
-      for (let px = 0; px <= plotW; px++) {
-        const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
-        const bin = f * M / sr;
-        const b0 = Math.floor(bin), b1 = b0 + 1;
-        if (b0 < 1 || b1 >= numBins) { dbs[px] = null; continue; }
-        const t = bin - b0;
-        const m = mag[b0] + (mag[b1] - mag[b0]) * t;
-        const db = 20 * Math.log10(Math.max(m, 1e-10));
-        dbs[px] = db;
-        if (db > maxDb) maxDb = db;
-      }
-
-      // Draw normalized trace
+      // Draw the trace in absolute dBFS (fixed reference — no per-plot normalization,
+      // so plots of the same audio on different platforms show identical shapes).
       ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
       ctx.beginPath();
       let started = false;
       for (let px = 0; px <= plotW; px++) {
-        if (dbs[px] === null) continue;
-        let db = dbs[px] - maxDb;
+        const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
+        const bin = f * M / sr;
+        const b0 = Math.floor(bin), b1 = b0 + 1;
+        if (b0 < 1 || b1 >= numBins) continue;
+        const t = bin - b0;
+        const m = mag[b0] + (mag[b1] - mag[b0]) * t;
+        let db = 20 * Math.log10(Math.max(m / dbfsRef, 1e-10));
         if (db < dbMin) db = dbMin;
+        if (db > dbMax) db = dbMax;
         const x = padL + px;
         const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
         if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
