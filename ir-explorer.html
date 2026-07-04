@@ -848,7 +848,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 39;
+    const BUILD_NO = 40;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2760,10 +2760,9 @@ function expint1(v) {
 // W=2048, H=128 (93.75% overlap, 16 frames overlap each output sample),
 // periodic Hann on both analysis and synthesis. Bin width 23.4 Hz @ 48k for
 // surgical tonal-noise separation. Full pipeline:
-//   • Adaptive noise estimation via minimum-statistics sub-window tracking
-//     (Martin 1994): 8 sub-windows of 48 frames (~1s total), noise σ² per
-//     bin = min-across-subwindows(smoothed |Y|²) × bias correction. No
-//     dependency on the recording having stationary silence.
+//   • Fixed noise profile: the manually-computed magnitude spectrum from
+//     the quietest 200 ms slice of the recording, posted from the main
+//     thread and used as σ_N per bin.
 //   • Log-magnitude MMSE gain estimator.
 //   • Signal Presence Uncertainty (SPU): multiply by P(H1|Y), the posterior
 //     probability the bin contains signal, for deeper attenuation on
@@ -2809,18 +2808,7 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.attackA  = 0.2;                               // gain rising: weight on previous (fast)
     this.releaseA = 0.75;                              // gain falling: weight on previous (slow)
 
-    // Adaptive noise estimation (minimum-statistics with sub-windows).
-    this.powerSmoothAlpha = 0.7;                       // 1-pole IIR on observed |Y|²
-    this.V_subwindows = 8;                             // number of sub-windows
-    this.subWinLen    = 48;                            // frames per sub-window (~130ms at H=128 sr=48k)
-    this.biasCorrection = 2.5;                         // corrects downward bias of min-over-N estimator
-    this.powerSmooth = new Float32Array(this.numBins); // smoothed power per bin
-    this.subWinMins  = new Float32Array(this.V_subwindows * this.numBins);
-    this.adaptiveNoise2 = new Float32Array(this.numBins); // current noise variance per bin
-    this.mag2Scratch    = new Float32Array(this.numBins); // |Y|² cache per frame (for masking)
-    for (let i = 0; i < this.subWinMins.length; i++) this.subWinMins[i] = 1e20;
-    this.currentSubIdx = 0;
-    this.framesInCurrentSub = 0;
+    this.mag2Scratch = new Float32Array(this.numBins); // |Y|² cache per frame (for masking + Pass 1)
 
     // Perceptual masking — bins masked by a nearby louder bin get gain floor
     // raised toward 1 (their noise is inaudible anyway).
@@ -2837,19 +2825,6 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       if (data.type === 'enable')     this.enabled = !!data.value;
       else if (data.type === 'profile') {
         this.noiseProfileMag = data.value ? new Float32Array(data.value) : null;
-        // Seed adaptive state from manual profile so there's no startup transient
-        // (adaptive tracker will refine from this initial estimate as playback runs).
-        if (this.noiseProfileMag) {
-          for (let k = 0; k < this.numBins; k++) {
-            const p2 = this.noiseProfileMag[k] * this.noiseProfileMag[k];
-            this.powerSmooth[k] = p2;
-            this.adaptiveNoise2[k] = p2;
-            const seed = p2 / this.biasCorrection;
-            for (let v = 0; v < this.V_subwindows; v++) this.subWinMins[v * this.numBins + k] = seed;
-          }
-          this.currentSubIdx = 0;
-          this.framesInCurrentSub = 0;
-        }
       }
       else if (data.type === 'minGain')       this.minGain = data.value;
       else if (data.type === 'ddAlpha')       this.ddAlpha = data.value;
@@ -2859,7 +2834,6 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
       else if (data.type === 'releaseA')      this.releaseA = data.value;
       else if (data.type === 'maskStrength')  this.maskStrength = data.value;
       else if (data.type === 'maskThresholdDb') this.maskThresholdDb = data.value;
-      else if (data.type === 'biasCorrection') this.biasCorrection = data.value;
       else if (data.type === 'reportEveryFrames') this.reportEveryFrames = data.value | 0;
     };
   }
@@ -2881,39 +2855,14 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     this.im.fill(0);
     fft2(this.re, this.im, false);
 
-    // Log-MMSE + SPU + adaptive noise estimation + perceptual masking
-    // + 3-tap freq median + asymmetric time smoothing.
+    // Log-MMSE + SPU + perceptual masking + 3-tap freq median + asymmetric time smoothing.
     const alpha = this.ddAlpha;
     const qRatio = this.spuQ / (1 - this.spuQ);
 
-    // ── Pass 0: adaptive noise estimation via min-statistics sub-windows ──
-    // Track per-bin minimum of smoothed |Y|² over a sliding time window.
-    // Also cache |Y|² per bin for reuse in Pass 1 (masking + Log-MMSE).
-    const alphaP = this.powerSmoothAlpha;
-    const subIdx = this.currentSubIdx * this.numBins;
+    // Precompute |Y|² per bin so the masking loop in Pass 1 can look up
+    // neighbors without re-squaring.
     for (let k = 0; k < this.numBins; k++) {
-      const mag2 = this.re[k]*this.re[k] + this.im[k]*this.im[k];
-      this.mag2Scratch[k] = mag2;
-      const smoothed = alphaP * this.powerSmooth[k] + (1 - alphaP) * mag2;
-      this.powerSmooth[k] = smoothed;
-      if (smoothed < this.subWinMins[subIdx + k]) this.subWinMins[subIdx + k] = smoothed;
-    }
-    this.framesInCurrentSub++;
-    if (this.framesInCurrentSub >= this.subWinLen) {
-      this.currentSubIdx = (this.currentSubIdx + 1) % this.V_subwindows;
-      const newSubIdx = this.currentSubIdx * this.numBins;
-      for (let k = 0; k < this.numBins; k++) this.subWinMins[newSubIdx + k] = 1e20;
-      this.framesInCurrentSub = 0;
-    }
-    // Adaptive noise² = min-across-sub-windows × bias correction
-    const V = this.V_subwindows, bias = this.biasCorrection;
-    for (let k = 0; k < this.numBins; k++) {
-      let minP = 1e20;
-      for (let v = 0; v < V; v++) {
-        const val = this.subWinMins[v * this.numBins + k];
-        if (val < minP) minP = val;
-      }
-      this.adaptiveNoise2[k] = minP * bias;
+      this.mag2Scratch[k] = this.re[k]*this.re[k] + this.im[k]*this.im[k];
     }
 
     // ── Pass 1: Log-MMSE × SPU × perceptual-masking floor lift ──
@@ -2923,7 +2872,8 @@ class NoiseFilterProcessor extends AudioWorkletProcessor {
     const invLn10x10 = 10 / Math.LN10;
     for (let k = 0; k < this.numBins; k++) {
       const mag2 = this.mag2Scratch[k];
-      const noise2 = this.adaptiveNoise2[k] * this.oversubtract + 1e-18;
+      const nfMag = this.noiseProfileMag[k];
+      const noise2 = nfMag * nfMag * this.oversubtract + 1e-18;
       const gamma = mag2 / noise2;
       const gammaMinus1 = gamma > 1 ? gamma - 1 : 0;
       const xi = Math.max(alpha * this.prevSNRhat[k] + (1 - alpha) * gammaMinus1, 1e-6);
