@@ -627,20 +627,35 @@
       .blend-canvas { height: 200px; }
     }
 
-    /* Short viewports (landscape phones ≲ 500 px tall). Tighten the sidebar
-       drawer so more of it fits before scrolling kicks in, and reduce the
-       explanatory paragraphs which otherwise dominate the vertical space. */
+    /* Default: the .sidebar-info and .sidebar-controls wrappers are transparent
+       so existing desktop / portrait mobile layouts are unaffected. */
+    .sidebar-info, .sidebar-controls { display: contents; }
+
+    /* Short viewports (landscape phones ≲ 500 px tall). Split the drawer into
+       two columns — text on the left, interactive controls on the right — so
+       the whole thing fits in the wide-but-short viewport without scrolling. */
     @media (max-height: 500px) {
       .sidebar-body.open {
+        flex-direction: row;
+        gap: 1.5rem;
         max-height: calc(100vh - 3rem);
-        gap: 0.4rem;
         padding-top: 0.4rem;
       }
+      .sidebar-info,
+      .sidebar-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 0;
+      }
+      .sidebar-info     { flex: 1.2; }
+      .sidebar-controls { flex: 1; }
       .sidebar-desc { font-size: 0.62rem; line-height: 1.45; margin-top: 0.25rem; }
       .sidebar-desc:first-of-type { margin-bottom: 0.25rem; }
       .btn-sidebar { padding: 0.4rem 0.75rem; font-size: 0.7rem; }
-      .sidebar-check[style] { margin-top: 0.75rem !important; }
-      #btnDemo[style] { margin-top: 0.5rem !important; }
+      .sidebar-check[style] { margin-top: 0.4rem !important; }
+      #btnDemo[style] { margin-top: 0.4rem !important; }
+      .sidebar-spacer { display: none; }
     }
 
   </style>
@@ -659,24 +674,28 @@
       <textarea class="notes-textarea" id="sessionNotesMobile" placeholder="Session notes…"></textarea>
     </div>
     <div class="sidebar-body" id="sidebarBody">
-      <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
-      <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
-      <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
-      <label class="sidebar-check" style="margin-top:1.5rem">
-        <input type="checkbox" id="chkAutoGain" checked>
-        <span>Auto Gain</span>
-      </label>
-      <label class="sidebar-check">
-        <input type="checkbox" id="chkNoiseFilter" checked>
-        <span>Background Noise Filtering</span>
-        <button type="button" class="audition-btn" id="btnNoiseInfo" title="Show noise profile spectrum">&#9432;</button>
-      </label>
-      <button class="btn-sidebar" id="btnDemo" style="margin-top:1.5rem">&#9654; Demo session</button>
-      <div style="flex:1"></div>
-      <div class="sidebar-actions">
-        <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
-        <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
-        <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
+      <div class="sidebar-info">
+        <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
+        <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
+        <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
+      </div>
+      <div class="sidebar-controls">
+        <label class="sidebar-check" style="margin-top:1.5rem">
+          <input type="checkbox" id="chkAutoGain" checked>
+          <span>Auto Gain</span>
+        </label>
+        <label class="sidebar-check">
+          <input type="checkbox" id="chkNoiseFilter" checked>
+          <span>Background Noise Filtering</span>
+          <button type="button" class="audition-btn" id="btnNoiseInfo" title="Show noise profile spectrum">&#9432;</button>
+        </label>
+        <button class="btn-sidebar" id="btnDemo" style="margin-top:1.5rem">&#9654; Demo session</button>
+        <div class="sidebar-spacer" style="flex:1"></div>
+        <div class="sidebar-actions">
+          <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
+          <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
+          <button class="btn-sidebar danger" id="btnClear">&#215; Clear all</button>
+        </div>
       </div>
     </div>
     <div class="build-no build-no-desktop" id="buildNoDesktop"></div>
@@ -910,7 +929,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 50;
+    const BUILD_NO = 51;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
