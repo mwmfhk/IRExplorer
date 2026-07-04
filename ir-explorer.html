@@ -488,7 +488,14 @@
       border: 1px solid #eee; border-radius: 8px;
       display: block; touch-action: none;
     }
-    .modal-canvas.noise-spec-canvas { height: min(28vh, 210px); }
+    .modal-canvas.noise-spec-canvas { height: min(26vh, 200px); }
+    .noise-spec-block { display: flex; flex-direction: column; gap: 0.35rem; }
+    .noise-spec-label {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 0.7rem; letter-spacing: 0.05em; color: #444;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .noise-spec-label .audition-btn { font-size: 0.72rem; margin-left: 0.5rem; opacity: 0.8; }
     .modal-title-plain {
       font-size: 0.7rem; letter-spacing: 0.15em; text-transform: uppercase;
       color: #666; font-weight: 700;
@@ -637,7 +644,6 @@
       <label class="sidebar-check">
         <input type="checkbox" id="chkNoiseFilter" checked>
         <span>Background Noise Filtering</span>
-        <button type="button" class="audition-btn" id="btnAuditionNoise" title="Play the captured noise profile">&#9654;</button>
         <button type="button" class="audition-btn" id="btnNoiseInfo" title="Show noise profile spectrum">&#9432;</button>
       </label>
       <button class="btn-sidebar" id="btnDemo" style="margin-top:1.5rem">&#9654; Demo session</button>
@@ -851,9 +857,21 @@
         <div class="modal-title-plain">Noise Profile Spectrum</div>
         <button class="modal-close" id="noiseSpecClose" aria-label="Close">✕</button>
       </div>
-      <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasL"></canvas>
-      <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasR"></canvas>
-      <div class="modal-info">Averaged magnitude spectrum of the quietest 200 ms of each recording — the noise floor used by the Log-MMSE denoiser. Absolute dBFS · 0 dB = full-scale sine amplitude.</div>
+      <div class="noise-spec-block">
+        <div class="noise-spec-label">
+          <span id="noiseSpecLabelL">Rhythm · noise floor</span>
+          <button type="button" class="audition-btn" id="btnAuditionL" title="Play the captured rhythm noise">&#9654;</button>
+        </div>
+        <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasL"></canvas>
+      </div>
+      <div class="noise-spec-block">
+        <div class="noise-spec-label">
+          <span id="noiseSpecLabelR">Lead · noise floor</span>
+          <button type="button" class="audition-btn" id="btnAuditionR" title="Play the captured lead noise">&#9654;</button>
+        </div>
+        <canvas class="modal-canvas noise-spec-canvas" id="noiseSpecCanvasR"></canvas>
+      </div>
+      <div class="modal-info">Averaged spectrum of the auto-detected quietest 200 ms window. Absolute dBFS · 0 dB = full-scale sine amplitude.</div>
     </div>
   </div>
 
@@ -867,7 +885,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 47;
+    const BUILD_NO = 48;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -902,12 +920,15 @@
     const btnDemo      = document.getElementById('btnDemo');
     const chkAutoGain    = document.getElementById('chkAutoGain');
     const chkNoiseFilter = document.getElementById('chkNoiseFilter');
-    const btnAuditionNoise = document.getElementById('btnAuditionNoise');
     const btnNoiseInfo     = document.getElementById('btnNoiseInfo');
     const noiseSpecModal   = document.getElementById('noiseSpecModal');
     const noiseSpecClose   = document.getElementById('noiseSpecClose');
     const noiseSpecCanvasL = document.getElementById('noiseSpecCanvasL');
     const noiseSpecCanvasR = document.getElementById('noiseSpecCanvasR');
+    const noiseSpecLabelL  = document.getElementById('noiseSpecLabelL');
+    const noiseSpecLabelR  = document.getElementById('noiseSpecLabelR');
+    const btnAuditionL     = document.getElementById('btnAuditionL');
+    const btnAuditionR     = document.getElementById('btnAuditionR');
     const sessionNotesEl = document.getElementById('sessionNotes');
     const btnAddIr      = document.getElementById('btnAddIr');
     const btnAddIrR     = document.getElementById('btnAddIrR');
@@ -1953,7 +1974,7 @@
       for (let k = 0; k < numBins; k++) magAvg[k] /= frames;
 
       const sampleSlice = new Float32Array(samples.subarray(minStart, noiseEnd));
-      return { mag: magAvg, samples: sampleSlice, sr };
+      return { mag: magAvg, samples: sampleSlice, sr, startSec: minStart / sr };
     }
 
     function updateNoiseProfile(side) {
@@ -1970,10 +1991,11 @@
           noiseFilterNodeR.port.postMessage({ type: 'profile', value: copy.buffer }, [copy.buffer]);
         }
       }
-      // Enable the audition + info buttons whenever we have at least one profile.
-      const noProfile = !(noiseProfileL || noiseProfileR);
-      btnAuditionNoise.disabled = noProfile;
-      btnNoiseInfo.disabled = noProfile;
+      // Enable the info button when either profile exists; each play button is
+      // enabled by its own side's profile.
+      btnNoiseInfo.disabled  = !(noiseProfileL || noiseProfileR);
+      btnAuditionL.disabled  = !noiseProfileL;
+      btnAuditionR.disabled  = !noiseProfileR;
     }
 
     // Create a noise-filter worklet node with the current profile + enable state.
@@ -4429,11 +4451,12 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       }
     });
 
-    btnAuditionNoise.disabled = true;
     btnNoiseInfo.disabled = true;
+    btnAuditionL.disabled = true;
+    btnAuditionR.disabled = true;
 
     // ── Noise-profile spectrum modal ─────────────────────────────────────────
-    function drawOneNoiseSpectrum(canvas, profile, title) {
+    function drawOneNoiseSpectrum(canvas, profile) {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       canvas.width  = Math.round(rect.width  * dpr);
@@ -4443,16 +4466,9 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       const W = rect.width, H = rect.height;
       ctx.clearRect(0, 0, W, H);
 
-      const padL = 44, padR = 12, padT = 22, padB = 26;
+      const padL = 44, padR = 12, padT = 10, padB = 26;
       const plotW = W - padL - padR;
       const plotH = H - padT - padB;
-
-      // Title strip
-      ctx.fillStyle = '#666';
-      ctx.font = 'bold 11px SF Mono, monospace';
-      ctx.textBaseline = 'top';
-      ctx.textAlign = 'left';
-      ctx.fillText(title, padL, 4);
 
       if (!profile) {
         ctx.fillStyle = '#aaa';
@@ -4524,9 +4540,15 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       }
       ctx.stroke();
     }
+    function formatMarker(profile) {
+      if (!profile || profile.startSec == null) return '';
+      return ' · window @ ' + profile.startSec.toFixed(3) + 's';
+    }
     function drawNoiseSpectra() {
-      drawOneNoiseSpectrum(noiseSpecCanvasL, noiseProfileL, 'RHYTHM · noise floor');
-      drawOneNoiseSpectrum(noiseSpecCanvasR, noiseProfileR, 'LEAD · noise floor');
+      noiseSpecLabelL.textContent = 'Rhythm · noise floor' + formatMarker(noiseProfileL);
+      noiseSpecLabelR.textContent = 'Lead · noise floor'   + formatMarker(noiseProfileR);
+      drawOneNoiseSpectrum(noiseSpecCanvasL, noiseProfileL);
+      drawOneNoiseSpectrum(noiseSpecCanvasR, noiseProfileR);
     }
     function openNoiseSpec() {
       if (!noiseProfileL && !noiseProfileR) {
@@ -4544,27 +4566,20 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNoiseSpec(); });
     window.addEventListener('resize', () => { if (noiseSpecModal.classList.contains('visible')) drawNoiseSpectra(); });
 
-    btnAuditionNoise.addEventListener('click', () => {
-      const parts = [];
-      if (noiseProfileL?.samples) parts.push(noiseProfileL);
-      if (noiseProfileR?.samples) parts.push(noiseProfileR);
-      if (parts.length === 0) { showError('No noise profile — record something first.'); return; }
-      // Stop any currently-playing audition
+    function auditionOne(profile) {
+      if (!profile?.samples) return;
       if (auditionSourceNode) { try { auditionSourceNode.stop(); } catch {} auditionSourceNode = null; }
       unlockAndResume();
       const ctx = getAudioCtx();
-      // Concatenate available parts with a 200 ms silence gap between them
-      const gap = Math.round(0.2 * ctx.sampleRate);
-      const totalLen = parts.reduce((acc, p) => acc + p.samples.length, 0) + gap * (parts.length - 1);
-      const buf = ctx.createBuffer(1, totalLen, ctx.sampleRate);
-      const ch = buf.getChannelData(0);
-      let off = 0;
-      for (let i = 0; i < parts.length; i++) {
-        ch.set(parts[i].samples, off);
-        off += parts[i].samples.length + (i < parts.length - 1 ? gap : 0);
-      }
-      // Boost by +12 dB so quiet hiss is audible for evaluation; if the
-      // profile accidentally captured actual music, this makes it obvious.
+      // Resample the stored slice (which is at profile.sr) to the current context
+      // sample rate before playback, so the noise is heard at its original pitch
+      // regardless of which context the modal was opened from.
+      const outSamples = profile.sr === ctx.sampleRate
+        ? profile.samples
+        : jsResample(profile.samples, profile.sr, ctx.sampleRate);
+      const buf = ctx.createBuffer(1, outSamples.length, ctx.sampleRate);
+      buf.getChannelData(0).set(outSamples);
+      // +12 dB boost so quiet hiss is audible.
       const src = ctx.createBufferSource();
       src.buffer = buf;
       const gain = ctx.createGain(); gain.gain.value = Math.pow(10, 12 / 20);
@@ -4572,7 +4587,9 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
       auditionSourceNode = src;
       src.onended = () => { if (auditionSourceNode === src) auditionSourceNode = null; };
       src.start();
-    });
+    }
+    btnAuditionL.addEventListener('click', () => auditionOne(noiseProfileL));
+    btnAuditionR.addEventListener('click', () => auditionOne(noiseProfileR));
 
     chkNoiseFilter.addEventListener('change', async () => {
       noiseFilterEnabled = chkNoiseFilter.checked;
