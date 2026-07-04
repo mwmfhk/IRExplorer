@@ -79,11 +79,12 @@
     .btn-sidebar.danger:hover { background: #fee2e2; }
 
     .sidebar-check {
-      display: flex; align-items: center; gap: 0.5rem;
-      font-size: 0.7rem; color: #333;
-      letter-spacing: 0.02em; cursor: pointer;
-      user-select: none;
+      display: flex; align-items: center; gap: 0.55rem;
+      font-size: 0.65rem; color: #aaa;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      cursor: pointer; user-select: none;
     }
+    .sidebar-check + .sidebar-check { margin-top: 0.6rem; }
     .sidebar-check input[type="checkbox"] { accent-color: #f59e0b; cursor: pointer; }
     .audition-btn {
       background: none; border: none; padding: 0;
@@ -624,7 +625,7 @@
       <div class="sidebar-copyright">&copy; Matthew Wong, 2026</div>
       <p class="sidebar-desc">This tool allows you to sample IRs intuitively — you record a DI'd backing track and lead line as two separate tracks, after which you can, on each track, blend multiple IRs for the sound you want while the loop keeps playing.</p>
       <p class="sidebar-desc">You can then export the blending mixture of the IRs into a single IR to load into your playing rig.</p>
-      <label class="sidebar-check" style="margin-top:0.75rem">
+      <label class="sidebar-check" style="margin-top:1.5rem">
         <input type="checkbox" id="chkAutoGain" checked>
         <span>Auto Gain</span>
       </label>
@@ -633,7 +634,7 @@
         <span>Background Noise Filtering</span>
         <button type="button" class="audition-btn" id="btnAuditionNoise" title="Play the captured noise profile">&#9654;</button>
       </label>
-      <button class="btn-sidebar" id="btnDemo" style="margin-top:0.5rem">&#9654; Demo session</button>
+      <button class="btn-sidebar" id="btnDemo" style="margin-top:1.5rem">&#9654; Demo session</button>
       <div style="flex:1"></div>
       <div class="sidebar-actions">
         <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
@@ -848,7 +849,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 41;
+    const BUILD_NO = 42;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
