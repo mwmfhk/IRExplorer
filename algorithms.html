@@ -200,6 +200,10 @@
     <li><a href="#fileformat">Session File Format (.irz)</a></li>
     <li><a href="#wavexport">Exported IR File Format (.wav)</a></li>
   </ol>
+  <div class="toc-group">Real-Time Processing</div>
+  <ol start="14">
+    <li><a href="#denoise">Background Noise Reduction (Log-MMSE + SPU)</a></li>
+  </ol>
 </nav>
 
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
@@ -1368,6 +1372,164 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
 
   <div class="note">
     <strong>Why 16-bit and not 24 or 32?</strong> 16-bit at 96 dB dynamic range is well below the noise floor of any speaker cabinet capture (typical cab IRs measure ~60 dB SNR). 24-bit float would double the file size for no audible benefit. Every IR loader on the market handles PCM16 WAV; 24-bit and 32-float support is less universal, especially on older hardware.
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────────────────────────────── -->
+<section id="denoise">
+  <h2>Section 14 — Real-time processing</h2>
+  <h3>Background Noise Reduction (Log-MMSE + SPU)</h3>
+
+  <p>The <em>Background Noise Filtering</em> checkbox in the sidebar engages a real-time, statistically-optimal noise reducer that runs in an AudioWorklet inserted before the input Gain stage. It targets stationary hiss, ground-loop hum, interface self-noise, and other broadband + tonal noise typical of a DI'd guitar recording. The design goal is aggressive reduction with minimum perceptible artifacts.</p>
+
+  <h4>Pipeline overview</h4>
+
+  <div class="diagram">
+    <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="10" fill="#333">
+        <!-- Input side -->
+        <rect x="20" y="115" width="90" height="30" fill="#fafafa" stroke="#d4d4d4"/>
+        <text x="65" y="134" text-anchor="middle">source</text>
+        <line x1="110" y1="130" x2="140" y2="130" stroke="#888" stroke-width="1.5"/>
+        <polygon points="140,130 134,126 134,134" fill="#888"/>
+
+        <!-- STFT analysis -->
+        <rect x="140" y="105" width="105" height="50" fill="#fff7ed" stroke="#f59e0b"/>
+        <text x="192" y="123" text-anchor="middle" font-weight="bold">STFT analysis</text>
+        <text x="192" y="138" text-anchor="middle" font-size="8" fill="#92400e">Hann · W=2048 · H=128</text>
+        <text x="192" y="150" text-anchor="middle" font-size="8" fill="#92400e">FFT → Y[k]</text>
+        <line x1="245" y1="130" x2="275" y2="130" stroke="#888" stroke-width="1.5"/>
+        <polygon points="275,130 269,126 269,134" fill="#888"/>
+
+        <!-- Gain computation -->
+        <rect x="275" y="55" width="200" height="155" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+        <text x="375" y="76" text-anchor="middle" font-weight="bold">Per-bin gain</text>
+        <line x1="285" y1="85" x2="465" y2="85" stroke="#f59e0b"/>
+        <g font-size="9" fill="#333">
+          <text x="285" y="105">1. γ, ξ (a-post/a-priori SNR)</text>
+          <text x="285" y="122">2. Decision-directed ξ smooth</text>
+          <text x="285" y="139">3. G_MMSE (Log-MMSE)</text>
+          <text x="285" y="156">4. × P(H1|Y)  (SPU)</text>
+          <text x="285" y="173">5. 3-tap median across bins</text>
+          <text x="285" y="190">6. Asymmetric time smooth</text>
+          <text x="285" y="205" fill="#92400e">→ g[k]</text>
+        </g>
+
+        <line x1="475" y1="130" x2="500" y2="130" stroke="#888" stroke-width="1.5"/>
+        <polygon points="500,130 494,126 494,134" fill="#888"/>
+
+        <!-- STFT synthesis / OLA -->
+        <rect x="500" y="105" width="100" height="50" fill="#fff7ed" stroke="#f59e0b"/>
+        <text x="550" y="123" text-anchor="middle" font-weight="bold">STFT synth</text>
+        <text x="550" y="138" text-anchor="middle" font-size="8" fill="#92400e">g × Y → IFFT</text>
+        <text x="550" y="150" text-anchor="middle" font-size="8" fill="#92400e">Hann · OLA (×⅙)</text>
+
+        <line x1="600" y1="130" x2="630" y2="130" stroke="#888" stroke-width="1.5"/>
+        <polygon points="630,130 624,126 624,134" fill="#888"/>
+
+        <rect x="630" y="115" width="50" height="30" fill="#fafafa" stroke="#d4d4d4"/>
+        <text x="655" y="134" text-anchor="middle">→ gain</text>
+
+        <!-- Noise profile input -->
+        <rect x="20" y="30" width="120" height="35" fill="#f0fdf4" stroke="#10b981"/>
+        <text x="80" y="50" text-anchor="middle" fill="#065f46" font-weight="bold">Noise profile σ_N[k]</text>
+        <line x1="140" y1="47" x2="200" y2="47" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <line x1="200" y1="47" x2="200" y2="55" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3 3"/>
+        <polygon points="200,55 196,49 204,49" fill="#10b981"/>
+        <text x="80" y="83" text-anchor="middle" font-size="8" fill="#065f46">quietest 200 ms of recording</text>
+      </g>
+    </svg>
+    <div class="caption">Overlap-add STFT loop with per-bin statistical gain computation.</div>
+  </div>
+
+  <p>Chosen parameters: <strong>W = 2048</strong> (bin width 23.4 Hz at 48 kHz — tight enough to isolate 60 Hz hum and its harmonics), <strong>H = 128</strong> (matches WebAudio block size, so STFT runs on every process call, 93.75% overlap, 16 frames overlap-added per output sample). Latency = W − H = 1920 samples ≈ 40 ms.</p>
+
+  <h4>Log-MMSE gain (Ephraim &amp; Malah, 1985)</h4>
+
+  <p>For each frame and each bin k, define:</p>
+  <div class="math">
+    γ<sub>k</sub> = |Y<sub>k</sub>|² / σ<sub>N,k</sub>²         (a-posteriori SNR — observed vs noise variance)<br>
+    ξ<sub>k</sub> ≈ E[|X<sub>k</sub>|²] / σ<sub>N,k</sub>²      (a-priori SNR — unknown clean-signal variance ratio)
+  </div>
+
+  <p>The log-magnitude MMSE estimator gives the per-bin gain:</p>
+  <div class="math">
+    ν<sub>k</sub> = ξ<sub>k</sub> / (1 + ξ<sub>k</sub>) · γ<sub>k</sub><br>
+    G<sub>MMSE,k</sub> = [ξ<sub>k</sub> / (1 + ξ<sub>k</sub>)] · exp( ½ · E<sub>1</sub>(ν<sub>k</sub>) )<br>
+    where E<sub>1</sub>(v) = ∫<sub>v</sub><sup>∞</sup> e<sup>−t</sup> / t dt
+  </div>
+
+  <p>This is the estimator that minimizes the mean-square error of the <em>log</em> spectral magnitude. Compared to the ordinary Wiener gain <code>|X|²/(|X|² + |N|²)</code>, Log-MMSE handles marginal-SNR bins much more gracefully, producing significantly less musical noise at the same measured SNR gain.</p>
+
+  <p>The exponential integral E<sub>1</sub>(v) has no closed form, but is well-approximated by two rational fits from Abramowitz &amp; Stegun (5.1.53 for v ≤ 1, 5.1.56 for v &gt; 1), each with error under 6 × 10<sup>−5</sup> — cheap and single-branch, safe for real-time use.</p>
+
+  <h4>Decision-directed a-priori SNR estimation</h4>
+
+  <p>The unknown ξ is what makes noise reduction hard — you don't know what clean signal to expect. The <em>decision-directed</em> estimator (Ephraim &amp; Malah, 1984) uses the previous frame's clean estimate as an anchor:</p>
+  <div class="math">
+    ξ<sub>k</sub><sup>(m)</sup> = α · |X̂<sub>k</sub><sup>(m−1)</sup>|² / σ<sub>N,k</sub>² + (1 − α) · max(γ<sub>k</sub><sup>(m)</sup> − 1, 0)
+  </div>
+  <p>with α = 0.98. Almost all of the a-priori SNR estimate comes from smoothed history; only a small amount from the current frame's instantaneous SNR. This is the smoothing that makes Log-MMSE stable — without it, ξ would fluctuate frame-to-frame and produce audible gain modulation on sustained tones.</p>
+
+  <p>State kept per bin: <code>prevSNRhat[k] = (g[k])² · γ<sub>k</sub></code> — equivalent to |X̂|²/σ<sub>N</sub>² from the previous frame.</p>
+
+  <h4>Signal Presence Uncertainty (SPU)</h4>
+
+  <p>Log-MMSE assumes signal is always present (hypothesis H<sub>1</sub>). SPU adds a soft-decision layer: compute the posterior probability that bin k contains signal given the observation, and multiply G<sub>MMSE</sub> by it. On noise-only bins the probability collapses to ~0 and attenuation deepens; on active bins the probability stays near 1 and Log-MMSE runs unmodified:</p>
+
+  <div class="math">
+    Λ<sub>k</sub> = [q / (1 − q)] · [1 / (1 + ξ<sub>k</sub>)] · exp(−ν<sub>k</sub>)<br>
+    P(H<sub>1</sub> | Y<sub>k</sub>) = 1 / (1 + Λ<sub>k</sub>)<br>
+    g<sub>k</sub> = G<sub>MMSE,k</sub> · P(H<sub>1</sub> | Y<sub>k</sub>)
+  </div>
+
+  <p>where q = P(H<sub>0</sub>) = prior probability of noise-only (0.3 by default). Notably, because ξ is DD-tracked and stays high through a note's decay, P(H<sub>1</sub>|Y) also stays high during tail-out — so decays don't get choked off. Between-note silence, where ξ drops to zero, is where SPU deepens attenuation for a much cleaner rest.</p>
+
+  <h4>Post-processing: freq median + asymmetric time smoothing</h4>
+
+  <p>Two lightweight filters clean up the remaining artifacts of the raw statistical gain map.</p>
+
+  <p><strong>3-tap frequency median across bins:</strong></p>
+  <div class="math">
+    g<sub>k</sub> ← median(g<sub>k−1</sub>, g<sub>k</sub>, g<sub>k+1</sub>) = (a + b + c − max − min)
+  </div>
+  <p>Isolated bins that stand out from their neighbors — the seeds of "chirp" musical noise — get replaced by the middle of their local group. DC and Nyquist are left untouched; done in-place with a rolling window keeping the previous raw value.</p>
+
+  <p><strong>Asymmetric exponential time smoothing on the gain map:</strong></p>
+  <div class="math">
+    g<sub>k</sub><sup>(m)</sup> = w · g<sub>k</sub><sup>(m−1)</sup> + (1 − w) · g<sub>k</sub><sup>(m)</sup>,   where<br>
+       w = 0.20  if g<sub>k</sub><sup>(m)</sup> &gt; g<sub>k</sub><sup>(m−1)</sup>  (gain rising — fast attack)<br>
+       w = 0.75  otherwise                        (gain falling — slow release)
+  </div>
+  <p>The rising branch is fast, so attacks aren't choked off; the falling branch is slow, so gain doesn't wobble around during sustained content and note tails aren't cut short. The whole thing is one scalar of state per bin and adds one Math op per bin per frame.</p>
+
+  <h4>Noise profile capture and audition</h4>
+
+  <p>Rather than requiring the user to manually mark a noise region, the app scans each finalized recording for its <strong>quietest 200 ms window</strong> (by sliding-window RMS) and averages the STFT magnitudes across overlapping frames within that window as the per-bin noise floor σ<sub>N,k</sub>. The captured slice is stored alongside the spectrum so the user can hit the ▶ button next to the checkbox to <em>audition it</em> — playback of the raw quietest samples boosted by +12 dB. If it sounds like hiss / air / room, the profile is legit; if it sounds like guitar, the auto-detector picked up quiet playing and noise reduction quality will suffer.</p>
+
+  <h4>Design decisions we rolled back</h4>
+
+  <p>Two upgrades were tried and reverted after listening tests:</p>
+  <ul>
+    <li><strong>Adaptive noise estimation via minimum-statistics sub-window tracking</strong> (Martin, 1994) — track the per-bin minimum of smoothed |Y|² over a sliding window and use that as σ<sub>N,k</sub>. Removes the dependency on the recording having a quiet region. Sounded slightly different in a way that was rejected; the fixed profile turned out to be cleaner in practice on the tested material.</li>
+    <li><strong>Perceptual masking</strong> — raise the gain floor on bins masked by nearby louder bins on the theory that noise in those bins is inaudible anyway. Removed because the ±5-bin symmetric window I used was much narrower than real Bark-scale spreading, so it protected bins that were <em>not</em> actually masked. Result: audible noise between spectral peaks. A proper implementation would need frequency-dependent, asymmetric spreading (upward masking wider than downward, wider at high frequencies).</li>
+  </ul>
+
+  <h4>Fixed parameters (current defaults)</h4>
+
+  <ul>
+    <li><code>W = 2048</code>, <code>H = 128</code> — window and hop</li>
+    <li><code>minGain = 0.03</code> (~−30 dB) — hard floor after all gain computation</li>
+    <li><code>ddAlpha = 0.98</code> — decision-directed a-priori SNR smoothing</li>
+    <li><code>oversubtract = 4.0</code> — σ<sub>N</sub>² multiplier before the MMSE math (aggressive attack on marginal bins)</li>
+    <li><code>spuQ = 0.3</code> — SPU prior P(H<sub>0</sub>)</li>
+    <li><code>attackA = 0.20</code>, <code>releaseA = 0.75</code> — asymmetric time smoother coefficients</li>
+  </ul>
+
+  <p>All of these are port-message tunable at runtime, though there's no UI to change them yet.</p>
+
+  <div class="note">
+    <strong>Effect on signal.</strong> This whole stack processes the raw recording <em>before</em> the input Gain, so all downstream stages (IR convolution, EQ, reverb) see the cleaned signal. It does not modify the recording on disk. When you export a blended IR, the exported IR encodes the cabinet response only — the noise reduction is a playback-time processing effect and cannot be captured in an IR file (see Section 2's note on linear time-invariant filters vs signal-dependent, time-varying processing).
   </div>
 </section>
 
