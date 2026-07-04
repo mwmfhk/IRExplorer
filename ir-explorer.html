@@ -584,7 +584,16 @@
         display: none; flex-direction: column; gap: 0.6rem;
         padding-top: 0.75rem;
       }
-      .sidebar-body.open { display: flex; }
+      /* Cap the open drawer to viewport height (minus topbar allowance) and
+         allow internal scrolling — otherwise the sticky sidebar clips the
+         bottom of the drawer and buttons become unreachable on short
+         viewports (landscape phones especially). */
+      .sidebar-body.open {
+        display: flex;
+        max-height: calc(100vh - 4rem);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
 
       /* Main content fills width */
       .main-content { padding: 1rem; gap: 1rem; }
@@ -616,6 +625,22 @@
 
       /* Blend canvas can be smaller on mobile */
       .blend-canvas { height: 200px; }
+    }
+
+    /* Short viewports (landscape phones ≲ 500 px tall). Tighten the sidebar
+       drawer so more of it fits before scrolling kicks in, and reduce the
+       explanatory paragraphs which otherwise dominate the vertical space. */
+    @media (max-height: 500px) {
+      .sidebar-body.open {
+        max-height: calc(100vh - 3rem);
+        gap: 0.4rem;
+        padding-top: 0.4rem;
+      }
+      .sidebar-desc { font-size: 0.62rem; line-height: 1.45; margin-top: 0.25rem; }
+      .sidebar-desc:first-of-type { margin-bottom: 0.25rem; }
+      .btn-sidebar { padding: 0.4rem 0.75rem; font-size: 0.7rem; }
+      .sidebar-check[style] { margin-top: 0.75rem !important; }
+      #btnDemo[style] { margin-top: 0.5rem !important; }
     }
 
   </style>
@@ -885,7 +910,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 49;
+    const BUILD_NO = 50;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
