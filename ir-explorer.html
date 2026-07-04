@@ -630,7 +630,7 @@
         <span>Auto Gain</span>
       </label>
       <label class="sidebar-check">
-        <input type="checkbox" id="chkNoiseFilter">
+        <input type="checkbox" id="chkNoiseFilter" checked>
         <span>Background Noise Filtering</span>
         <button type="button" class="audition-btn" id="btnAuditionNoise" title="Play the captured noise profile">&#9654;</button>
       </label>
@@ -849,7 +849,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 42;
+    const BUILD_NO = 43;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1884,7 +1884,7 @@
 
     // ── Background noise filter (real-time Log-MMSE) ─────────────────────────
     const NF_W = 2048;                    // must match NoiseFilterProcessor.W
-    let noiseFilterEnabled = false;
+    let noiseFilterEnabled = true;
     let noiseProfileL = null;             // { mag: Float32Array, samples: Float32Array, sr: number }
     let noiseProfileR = null;
     let noiseFilterNodeL = null;
