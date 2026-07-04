@@ -885,7 +885,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 48;
+    const BUILD_NO = 49;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1935,9 +1935,12 @@
     let noiseFilterNodeR = null;
     let auditionSourceNode = null;        // currently-playing audition BufferSource
 
-    // Scan the recorded buffer for its quietest 200 ms window and return both
-    // the averaged magnitude spectrum over that window (the noise floor used
-    // by Wiener) and the raw samples of that window (for auditioning).
+    // Scan the recorded buffer for its quiet regions. Instead of picking the
+    // single quietest 200 ms window (which is unstable across platforms — tiny
+    // sample-level differences from MP3 decode + resample flip the ranking on
+    // recordings without clear silence), collect all candidate windows, sort
+    // by sum-of-squares, and average the magnitude spectra across the QUIETEST
+    // ~5% (at least 5, at most 25). Robust to per-platform jitter.
     function computeNoiseProfile(buffer) {
       if (!buffer) return null;
       const samples = buffer.getChannelData(0);
@@ -1945,36 +1948,47 @@
       const noiseLen = Math.min(samples.length, Math.max(NF_W, Math.round(0.2 * sr)));
       if (samples.length < noiseLen + NF_W) return null;
 
-      // Find quietest 200-ms window via block-RMS scan (coarse step for speed).
+      // Collect all candidate windows with block sum-of-squares.
       const step = Math.max(1, Math.floor(noiseLen / 16));
-      let minSumSq = Infinity, minStart = 0;
+      const candidates = [];
       for (let start = 0; start + noiseLen <= samples.length; start += step) {
         let sumSq = 0;
         for (let i = 0; i < noiseLen; i++) sumSq += samples[start + i] * samples[start + i];
-        if (sumSq < minSumSq) { minSumSq = sumSq; minStart = start; }
+        candidates.push({ start, sumSq });
       }
-      const noiseEnd = minStart + noiseLen;
+      if (candidates.length === 0) return null;
+      candidates.sort((a, b) => a.sumSq - b.sumSq);
 
-      // Average magnitude spectrum over overlapping STFT frames in that window.
+      // Keep the quietest 5% of candidate windows (clamped to [5, 25]).
+      const nKeep = Math.min(candidates.length, Math.max(5, Math.min(25, Math.floor(candidates.length * 0.05))));
+      const kept = candidates.slice(0, nKeep);
+
+      // Average magnitude spectrum over overlapping STFT frames from ALL kept windows.
       const numBins = NF_W / 2 + 1;
       const magAvg = new Float32Array(numBins);
       const hann = new Float32Array(NF_W);
       for (let n = 0; n < NF_W; n++) hann[n] = 0.5 * (1 - Math.cos(2 * Math.PI * n / NF_W));
       const re = new Float32Array(NF_W), im = new Float32Array(NF_W);
-      const H = NF_W / 4;                 // dense sampling for a smooth profile
-      let frames = 0;
-      for (let start = minStart; start + NF_W <= noiseEnd; start += H) {
-        for (let n = 0; n < NF_W; n++) re[n] = samples[start + n] * hann[n];
-        im.fill(0);
-        fftRadix2(re, im, false);
-        for (let k = 0; k < numBins; k++) magAvg[k] += Math.sqrt(re[k]*re[k] + im[k]*im[k]);
-        frames++;
+      const H = NF_W / 4;
+      let totalFrames = 0;
+      for (const cand of kept) {
+        const winEnd = cand.start + noiseLen;
+        for (let start = cand.start; start + NF_W <= winEnd; start += H) {
+          for (let n = 0; n < NF_W; n++) re[n] = samples[start + n] * hann[n];
+          im.fill(0);
+          fftRadix2(re, im, false);
+          for (let k = 0; k < numBins; k++) magAvg[k] += Math.sqrt(re[k]*re[k] + im[k]*im[k]);
+          totalFrames++;
+        }
       }
-      if (frames === 0) return null;
-      for (let k = 0; k < numBins; k++) magAvg[k] /= frames;
+      if (totalFrames === 0) return null;
+      for (let k = 0; k < numBins; k++) magAvg[k] /= totalFrames;
 
-      const sampleSlice = new Float32Array(samples.subarray(minStart, noiseEnd));
-      return { mag: magAvg, samples: sampleSlice, sr, startSec: minStart / sr };
+      // Single-quietest window is what the audition button plays and what the
+      // time marker in the modal reports.
+      const minStart = kept[0].start;
+      const sampleSlice = new Float32Array(samples.subarray(minStart, minStart + noiseLen));
+      return { mag: magAvg, samples: sampleSlice, sr, startSec: minStart / sr, nAveragedWindows: nKeep };
     }
 
     function updateNoiseProfile(side) {
@@ -4542,7 +4556,8 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     }
     function formatMarker(profile) {
       if (!profile || profile.startSec == null) return '';
-      return ' · window @ ' + profile.startSec.toFixed(3) + 's';
+      const n = profile.nAveragedWindows || 1;
+      return ' · quietest @ ' + profile.startSec.toFixed(3) + 's · avg over ' + n + ' windows';
     }
     function drawNoiseSpectra() {
       noiseSpecLabelL.textContent = 'Rhythm · noise floor' + formatMarker(noiseProfileL);
