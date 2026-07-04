@@ -631,15 +631,13 @@
        so existing desktop / portrait mobile layouts are unaffected. */
     .sidebar-info, .sidebar-controls { display: contents; }
 
-    /* Short viewports (landscape phones ≲ 500 px tall). Split the drawer into
-       two columns — text on the left, interactive controls on the right — so
-       the whole thing fits in the wide-but-short viewport without scrolling. */
-    @media (max-height: 500px) {
+    /* Landscape orientation on any mobile-sized viewport (phone landscape AND
+       iPad landscape). Two-column sidebar drawer, side-by-side Rhythm + Lead.
+       Applies at any height because iPads have plenty of vertical space too. */
+    @media (max-width: 1655px) and (orientation: landscape) {
       .sidebar-body.open {
         flex-direction: row;
         gap: 1.5rem;
-        max-height: calc(100vh - 3rem);
-        padding-top: 0.4rem;
       }
       .sidebar-info,
       .sidebar-controls {
@@ -650,19 +648,27 @@
       }
       .sidebar-info     { flex: 1.2; }
       .sidebar-controls { flex: 1; }
+      .sidebar-spacer   { display: none; }
+
+      /* Rhythm + Lead side-by-side again since we have the horizontal space. */
+      .panels { flex-direction: row; gap: 0.75rem; }
+      .card   { width: auto; flex: 1 1 0; min-width: 0; padding: 1rem; }
+      .main-content { padding: 0.75rem; gap: 0.75rem; }
+    }
+
+    /* Short viewports (landscape phones ≲ 500 px tall). Add font/padding
+       tightening on top of the layout query above so the compressed content
+       fits without scrolling. */
+    @media (max-height: 500px) {
+      .sidebar-body.open {
+        max-height: calc(100vh - 3rem);
+        padding-top: 0.4rem;
+      }
       .sidebar-desc { font-size: 0.62rem; line-height: 1.45; margin-top: 0.25rem; }
       .sidebar-desc:first-of-type { margin-bottom: 0.25rem; }
       .btn-sidebar { padding: 0.4rem 0.75rem; font-size: 0.7rem; }
       .sidebar-check[style] { margin-top: 0.4rem !important; }
       #btnDemo[style] { margin-top: 0.4rem !important; }
-      .sidebar-spacer { display: none; }
-
-      /* Rhythm + Lead side-by-side again since we have the horizontal space. */
-      .panels { flex-direction: row; gap: 0.75rem; }
-      .card { width: auto; flex: 1 1 0; min-width: 0; padding: 1rem; }
-      .main-content { padding: 0.75rem; gap: 0.75rem; }
-
-      /* Match the notes drawer typography to the sidebar drawer's small size */
       .sidebar-notes .notes-textarea { font-size: 0.62rem; line-height: 1.45; }
     }
 
@@ -937,7 +943,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 53;
+    const BUILD_NO = 54;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
