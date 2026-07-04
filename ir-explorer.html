@@ -849,7 +849,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 44;
+    const BUILD_NO = 45;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1956,7 +1956,21 @@
     function createNoiseFilterNode(side) {
       if (workletCtx !== getAudioCtx()) return null;
       let node;
-      try { node = new AudioWorkletNode(getAudioCtx(), 'noise-filter-processor'); }
+      // Force strictly mono in / mono out so the two worklet instances (rhythm + lead)
+      // don't end up with different channel counts. Otherwise a stereo-decoded
+      // recording (some browsers' MediaRecorder produces stereo) would give the
+      // worklet 2 output channels, my process() only fills channel 0, and downstream
+      // ends up with signal on L only — audible as apparent panning between the two
+      // panels since one is stereo-derived and the other is always mono.
+      try {
+        node = new AudioWorkletNode(getAudioCtx(), 'noise-filter-processor', {
+          numberOfInputs: 1, numberOfOutputs: 1,
+          outputChannelCount: [1],
+          channelCount: 1,
+          channelCountMode: 'explicit',
+          channelInterpretation: 'speakers',
+        });
+      }
       catch (e) { return null; }
       const profile = side === 'left' ? noiseProfileL : noiseProfileR;
       if (profile) {
