@@ -77,6 +77,8 @@
     .btn-sidebar:hover { background: #e8e8e8; }
     .btn-sidebar.danger { background: #fff1f1; color: #b91c1c; border-color: #fecaca; }
     .btn-sidebar.danger:hover { background: #fee2e2; }
+    .btn-sidebar.new     { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+    .btn-sidebar.new:hover { background: #dbeafe; }
 
     .sidebar-check {
       display: flex; align-items: center; gap: 0.55rem;
@@ -726,7 +728,7 @@
         <button class="btn-sidebar" id="btnDemo" style="margin-top:1.5rem">&#9654; Demo session</button>
         <div class="sidebar-spacer" style="flex:1"></div>
         <div class="sidebar-actions">
-          <button class="btn-sidebar" id="btnClear">&#43; New session</button>
+          <button class="btn-sidebar new" id="btnClear">&#43; New session</button>
           <button class="btn-sidebar" id="btnLoad">&#8593; Load session</button>
           <button class="btn-sidebar" id="btnSave">&#8595; Save session</button>
         </div>
@@ -963,7 +965,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 57;
+    const BUILD_NO = 58;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
