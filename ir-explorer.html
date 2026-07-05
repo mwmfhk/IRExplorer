@@ -378,6 +378,26 @@
 
     .blend-canvas { width: 100%; height: 260px; display: block; cursor: default; touch-action: none; }
 
+    /* No text selection or iOS callout when starting a drag inside any of
+       the widgets whose drag would otherwise select nearby text. */
+    .blend-canvas,
+    .ir-knob,
+    .eq-knob,
+    .norm-knob-canvas,
+    .input-knob,
+    .cal-result-canvas,
+    .region-handle {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    /* And once a drag has started, kill selection everywhere so the pointer
+       leaving the widget mid-drag can't select adjacent text/labels. */
+    body.dragging, body.dragging * {
+      user-select: none !important;
+      -webkit-user-select: none !important;
+    }
+
     .blend-controls {
       display: flex; align-items: center; gap: 0.6rem;
     }
@@ -943,7 +963,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 54;
+    const BUILD_NO = 55;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -4738,6 +4758,22 @@ registerProcessor('noise-filter-processor', NoiseFilterProcessor);
     // ── Init ──────────────────────────────────────────────────────────────────
     drawReverbKnob(); drawInputGainKnob(); drawEqKnobs();
     drawRightReverbKnob(); drawRightInputGainKnob(); drawRightEqKnobs();
+
+    // Prevent text selection anywhere on the page while any drag widget is
+    // active — pointerdown on a knob or the polygon adds body.dragging, which
+    // CSS uses to force user-select:none globally; pointerup / pointercancel
+    // clear it. Complements the per-element user-select:none rules for the
+    // case where the pointer leaves the widget mid-drag and would otherwise
+    // start selecting labels nearby.
+    const DRAG_WIDGETS = '.blend-canvas, .ir-knob, .eq-knob, .norm-knob-canvas, .input-knob, .cal-result-canvas, .region-handle';
+    document.addEventListener('pointerdown', (e) => {
+      if (e.target && typeof e.target.closest === 'function' && e.target.closest(DRAG_WIDGETS)) {
+        document.body.classList.add('dragging');
+      }
+    }, true);
+    const clearDrag = () => document.body.classList.remove('dragging');
+    document.addEventListener('pointerup',      clearDrag, true);
+    document.addEventListener('pointercancel',  clearDrag, true);
 
     // iOS Safari ignores user-scalable=no, but still fires the WebKit gesture
     // events on pinch and the standard touchmove for multi-touch. Cancelling
