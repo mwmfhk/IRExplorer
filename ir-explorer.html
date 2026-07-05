@@ -963,7 +963,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 55;
+    const BUILD_NO = 56;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1378,9 +1378,29 @@
         const hAlign = outX >  0.25 ? 'left'   : outX < -0.25 ? 'right'  : 'center';
         const vAlign = outY >  0.25 ? 'top'    : outY < -0.25 ? 'bottom' : 'middle';
         ctx.textAlign = hAlign; ctx.textBaseline = vAlign;
-        const shortName = slots[i].name.replace(/\.[^.]+$/, '').slice(0, 18);
         ctx.fillStyle = '#555'; ctx.font = `${10 / sc}px SF Mono, monospace`;
-        ctx.fillText(shortName, v.x + outX * (VERT_R + 10), v.y + outY * (VERT_R + 10));
+
+        // Compute available horizontal room based on the anchor position and
+        // the text alignment, then truncate the name so it never runs off the
+        // canvas edge. Widths from measureText are in the polygon's post-scale
+        // coords, so multiply by sc to compare against canvas CSS pixels.
+        const anchorX = v.x + outX * (VERT_R + 10);
+        const anchorY = v.y + outY * (VERT_R + 10);
+        const anchorCssX = anchorX * sc + W / 2;
+        const margin = 4;
+        let availCssPx;
+        if (hAlign === 'right')      availCssPx = anchorCssX - margin;
+        else if (hAlign === 'left')  availCssPx = W - anchorCssX - margin;
+        else                         availCssPx = Math.min(anchorCssX, W - anchorCssX) * 2 - margin * 2;
+        let shortName = slots[i].name.replace(/\.[^.]+$/, '').slice(0, 18);
+        if (ctx.measureText(shortName).width * sc > availCssPx) {
+          const ell = '…';
+          while (shortName.length > 1 && ctx.measureText(shortName + ell).width * sc > availCssPx) {
+            shortName = shortName.slice(0, -1);
+          }
+          shortName += ell;
+        }
+        ctx.fillText(shortName, anchorX, anchorY);
       });
 
       if (nL >= 2) {
