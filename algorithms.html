@@ -291,7 +291,7 @@
   <h2>Section 02 — DSP</h2>
   <h3>Phase Correction</h3>
 
-  <p>Two cabinet IRs captured with different mics (or even the same mic at different positions) have their main impulses arriving at <strong>different sample indices</strong>. Sum them naively and you get <em>comb filtering</em>: a frequency response littered with notches.</p>
+  <p>Two IRs captured with different mics (or even the same mic at different positions) have their main impulses arriving at <strong>different sample indices</strong>. Sum them naively and you get <em>comb filtering</em>: a frequency response littered with notches.</p>
 
   <h4>What comb filtering looks like</h4>
   <p>Suppose IR A peaks at sample 0 and IR B peaks at sample Δt. Their weighted sum has transfer function:</p>
@@ -349,7 +349,7 @@
   </div>
 
   <h4>Mode 1: No Correction</h4>
-  <p>Raw weighted sum. Default. Preserves each IR's original phase character — many guitarists prefer this for the "air" and "smear" of each cab's natural response, accepting the comb filtering as an artifact of blending.</p>
+  <p>Raw weighted sum. Default. Preserves each IR's original phase character — many guitarists prefer this for the "air" and "smear" of each IR's natural response, accepting the comb filtering as an artifact of blending.</p>
 
   <h4>Mode 2: Align Peak</h4>
   <p>Find the index of each IR's absolute maximum sample and shift each one so all peaks land at the same index (the latest one across all IRs). Cheapest fix that handles the most common case (different mic distances).</p>
@@ -1133,7 +1133,7 @@ function unlockAndResume() {
     <div class="caption">Each output sample is a fractional position in the input array; linear interpolation between bracketing samples.</div>
   </div>
 
-  <p>Linear interpolation is crude compared to a windowed-sinc resampler. It rolls off some high frequencies and adds tiny aliasing. But for IRs of guitar cabinets — where the relevant content is below 5 kHz and the IR's own response masks the artifacts — it's perceptually transparent. And it always works, on every browser, with no sample-rate surprises.</p>
+  <p>Linear interpolation is crude compared to a windowed-sinc resampler. It rolls off some high frequencies and adds tiny aliasing. But for guitar IRs — where most of the relevant content is well below Nyquist and the IR's own response masks the artifacts — it's perceptually transparent. And it always works, on every browser, with no sample-rate surprises.</p>
 </section>
 
 <!-- ─────────────────────────────────────────────────────────────────────────── -->
@@ -1257,7 +1257,7 @@ function unlockAndResume() {
 
   <p><strong>Recordings</strong> — the DI'd guitar performances — are stored as <strong>320 kbps MP3</strong>. At that bitrate MP3 is perceptually transparent for guitar content, and the ~10× size reduction (versus raw 32-bit float) is meaningful when sessions include 30+ seconds of stereo audio. LAME introduces a fixed encoder delay of <strong>576 samples</strong> at the start of the decoded stream; the loader knows this and strips exactly that many samples on decode. The original length <code>n</code> is stored in the descriptor to guarantee sample-exact reconstruction.</p>
 
-  <p><strong>Impulse responses</strong> are stored as <strong>raw 32-bit float PCM, one file per channel</strong> (<code>_ch0.f32</code>, <code>_ch1.f32</code>). An IR's magnitude spectrum is <em>directly</em> what shapes the guitar tone — any lossy encoding would add audible coloration on top of the cabinet. Raw f32 is compact enough (a 2000-sample mono IR is 8 KB), lossless, and requires no decoding step at all: just read the bytes into a <code>Float32Array</code>.</p>
+  <p><strong>Impulse responses</strong> are stored as <strong>raw 32-bit float PCM, one file per channel</strong> (<code>_ch0.f32</code>, <code>_ch1.f32</code>). An IR's magnitude spectrum is <em>directly</em> what shapes the guitar tone — any lossy encoding would add audible coloration on top of the IR's own response. Raw f32 is compact enough (a 2000-sample mono IR is 8 KB), lossless, and requires no decoding step at all: just read the bytes into a <code>Float32Array</code>.</p>
 
   <h4>The descriptor pattern</h4>
 
@@ -1368,10 +1368,10 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
 
   <h4>What determines channels and sample rate</h4>
 
-  <p>Channels come from the blended AudioBuffer — mono if every loaded IR is mono (the typical case for guitar cabs), stereo if any is stereo. Sample rate is the current AudioContext's rate, typically <strong>48 kHz</strong> on modern devices (iPhone, most Chrome/Edge setups) or <strong>44.1 kHz</strong> on older Macs. If you save on one device and load on another, the WAV file carries its own sample rate — any downstream tool will read and use it directly.</p>
+  <p>Channels come from the blended AudioBuffer — mono if every loaded IR is mono (the typical case), stereo if any is stereo. Sample rate is the current AudioContext's rate, typically <strong>48 kHz</strong> on modern devices (iPhone, most Chrome/Edge setups) or <strong>44.1 kHz</strong> on older Macs. If you save on one device and load on another, the WAV file carries its own sample rate — any downstream tool will read and use it directly.</p>
 
   <div class="note">
-    <strong>Why 16-bit and not 24 or 32?</strong> 16-bit at 96 dB dynamic range is well below the noise floor of any speaker cabinet capture (typical cab IRs measure ~60 dB SNR). 24-bit float would double the file size for no audible benefit. Every IR loader on the market handles PCM16 WAV; 24-bit and 32-float support is less universal, especially on older hardware.
+    <strong>Why 16-bit and not 24 or 32?</strong> 16-bit at 96 dB dynamic range is well below the noise floor of any IR capture (typical guitar IRs measure ~60 dB SNR). 24-bit float would double the file size for no audible benefit. Every IR loader on the market handles PCM16 WAV; 24-bit and 32-float support is less universal, especially on older hardware.
   </div>
 </section>
 
@@ -1529,7 +1529,7 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
   <p>All of these are port-message tunable at runtime, though there's no UI to change them yet.</p>
 
   <div class="note">
-    <strong>Effect on signal.</strong> This whole stack processes the raw recording <em>before</em> the input Gain, so all downstream stages (IR convolution, EQ, reverb) see the cleaned signal. It does not modify the recording on disk. When you export a blended IR, the exported IR encodes the cabinet response only — the noise reduction is a playback-time processing effect and cannot be captured in an IR file (see Section 2's note on linear time-invariant filters vs signal-dependent, time-varying processing).
+    <strong>Effect on signal.</strong> This whole stack processes the raw recording <em>before</em> the input Gain, so all downstream stages (IR convolution, EQ, reverb) see the cleaned signal. It does not modify the recording on disk. When you export a blended IR, the exported IR encodes the impulse response only — the noise reduction is a playback-time processing effect and cannot be captured in an IR file (see Section 2's note on linear time-invariant filters vs signal-dependent, time-varying processing).
   </div>
 </section>
 

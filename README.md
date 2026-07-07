@@ -1,6 +1,6 @@
 # IR Explorer
 
-Browser-based tool for auditioning and blending guitar cabinet impulse responses. Record a DI'd rhythm part, record a lead over it, and blend up to 8 IRs per side interactively while listening to the loop. Export the blended result as a `.wav` IR loadable by any modeler or IR loader.
+Browser-based tool for auditioning and blending guitar impulse responses. Record a DI'd rhythm part, record a lead over it, and blend up to 8 IRs per side interactively while listening to the loop. Export the blended result as a `.wav` IR loadable by any modeler or IR loader.
 
 Live: https://mwmfhk.github.io/IRExplorer/ir-explorer.html
 Tech deep-dive: https://mwmfhk.github.io/IRExplorer/algorithms.html
@@ -23,7 +23,7 @@ ios-audio-test.html   10-button diagnostic page for iOS Safari Web Audio
                       HTML5 <audio>, etc). Used to isolate the audio-session
                       unlock problem (see algorithms.html §9).
 ir-session-pr100.irz  Demo session bundled into the app via fetch().
-                      Two DI'd guitar performances + a set of cab IRs.
+                      Two DI'd acoustic-guitar performances + a set of IRs.
 LICENSE               Apache 2.0.
 ```
 
