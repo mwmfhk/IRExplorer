@@ -1387,14 +1387,18 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
   <div class="diagram">
     <svg viewBox="0 0 700 260" xmlns="http://www.w3.org/2000/svg">
       <g font-family="SF Mono, monospace" font-size="10" fill="#333">
-        <!-- Input side -->
-        <rect x="20" y="115" width="90" height="30" fill="#fafafa" stroke="#d4d4d4"/>
+        <!-- Input side (pulses when the ball is inside it) -->
+        <rect x="20" y="115" width="90" height="30" fill="#fafafa" stroke="#d4d4d4">
+          <animate attributeName="fill" values="#fafafa;#fef3c7;#fafafa;#fafafa" keyTimes="0;0.05;0.15;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
         <text x="65" y="134" text-anchor="middle">source</text>
         <line x1="110" y1="130" x2="140" y2="130" stroke="#888" stroke-width="1.5"/>
         <polygon points="140,130 134,126 134,134" fill="#888"/>
 
         <!-- STFT analysis -->
-        <rect x="140" y="105" width="105" height="50" fill="#fff7ed" stroke="#f59e0b"/>
+        <rect x="140" y="105" width="105" height="50" fill="#fff7ed" stroke="#f59e0b">
+          <animate attributeName="fill" values="#fff7ed;#fed7aa;#fff7ed;#fff7ed" keyTimes="0;0.2;0.35;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
         <text x="192" y="123" text-anchor="middle" font-weight="bold">STFT analysis</text>
         <text x="192" y="138" text-anchor="middle" font-size="8" fill="#92400e">Hann · W=2048 · H=128</text>
         <text x="192" y="150" text-anchor="middle" font-size="8" fill="#92400e">FFT → Y[k]</text>
@@ -1402,7 +1406,9 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
         <polygon points="275,130 269,126 269,134" fill="#888"/>
 
         <!-- Gain computation -->
-        <rect x="275" y="55" width="200" height="155" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+        <rect x="275" y="55" width="200" height="155" fill="#fef3c7" stroke="#f59e0b" stroke-width="2">
+          <animate attributeName="fill" values="#fef3c7;#fde68a;#fef3c7;#fef3c7" keyTimes="0;0.4;0.6;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
         <text x="375" y="76" text-anchor="middle" font-weight="bold">Per-bin gain</text>
         <line x1="285" y1="85" x2="465" y2="85" stroke="#f59e0b"/>
         <g font-size="9" fill="#333">
@@ -1419,7 +1425,9 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
         <polygon points="500,130 494,126 494,134" fill="#888"/>
 
         <!-- STFT synthesis / OLA -->
-        <rect x="500" y="105" width="100" height="50" fill="#fff7ed" stroke="#f59e0b"/>
+        <rect x="500" y="105" width="100" height="50" fill="#fff7ed" stroke="#f59e0b">
+          <animate attributeName="fill" values="#fff7ed;#fed7aa;#fff7ed;#fff7ed" keyTimes="0;0.7;0.85;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
         <text x="550" y="123" text-anchor="middle" font-weight="bold">STFT synth</text>
         <text x="550" y="138" text-anchor="middle" font-size="8" fill="#92400e">g × Y → IFFT</text>
         <text x="550" y="150" text-anchor="middle" font-size="8" fill="#92400e">Hann · OLA (×⅙)</text>
@@ -1427,7 +1435,9 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
         <line x1="600" y1="130" x2="630" y2="130" stroke="#888" stroke-width="1.5"/>
         <polygon points="630,130 624,126 624,134" fill="#888"/>
 
-        <rect x="630" y="115" width="50" height="30" fill="#fafafa" stroke="#d4d4d4"/>
+        <rect x="630" y="115" width="50" height="30" fill="#fafafa" stroke="#d4d4d4">
+          <animate attributeName="fill" values="#fafafa;#fef3c7;#fafafa;#fafafa" keyTimes="0;0.9;0.98;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
         <text x="655" y="134" text-anchor="middle">→ gain</text>
 
         <!-- Noise profile input -->
@@ -1437,12 +1447,115 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
         <line x1="200" y1="47" x2="200" y2="55" stroke="#10b981" stroke-width="1.5" stroke-dasharray="3 3"/>
         <polygon points="200,55 196,49 204,49" fill="#10b981"/>
         <text x="80" y="83" text-anchor="middle" font-size="8" fill="#065f46">quietest 200 ms of recording</text>
+
+        <!-- Traveling data-flow ball -->
+        <circle r="6" fill="#f59e0b" stroke="#92400e" stroke-width="1.5">
+          <animate attributeName="cx"
+            values="65;65;192;375;550;655;655"
+            keyTimes="0;0.06;0.22;0.5;0.78;0.95;1"
+            dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="cy"
+            values="130;130;130;130;130;130;130"
+            dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="opacity"
+            values="0;1;1;1;1;1;0"
+            keyTimes="0;0.04;0.22;0.5;0.78;0.96;1"
+            dur="6s" repeatCount="indefinite"/>
+        </circle>
       </g>
     </svg>
-    <div class="caption">Overlap-add STFT loop with per-bin statistical gain computation.</div>
+    <div class="caption">Every 128 samples of input the pipeline runs once. The travelling ball traces one sample-block's journey through the four stages.</div>
   </div>
 
   <p>Chosen parameters: <strong>W = 2048</strong> (bin width 23.4 Hz at 48 kHz — tight enough to isolate 60 Hz hum and its harmonics), <strong>H = 128</strong> (matches WebAudio block size, so STFT runs on every process call, 93.75% overlap, 16 frames overlap-added per output sample). Latency = W − H = 1920 samples ≈ 40 ms.</p>
+
+  <h4>The STFT machinery underneath</h4>
+
+  <p>The whole pipeline is built on the Short-Time Fourier Transform: shift a windowed frame of samples through the buffer, transform each frame to the frequency domain, do the noise-reduction gain modification there, transform back, and reconstruct the output signal by overlap-adding the modified frames.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 700 220" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="9" fill="#333">
+        <!-- Analysis panel label -->
+        <text x="20" y="16" font-size="10" fill="#aaa" letter-spacing="0.1em">ANALYSIS · sliding Hann window over input signal</text>
+
+        <!-- Signal (a wavy line, static) -->
+        <path d="M 20 55 Q 60 30 90 55 T 160 55 T 230 55 T 300 55 T 370 55 T 440 55 T 510 55 T 580 55 T 660 55" stroke="#666" fill="none" stroke-width="1"/>
+        <!-- Signal baseline -->
+        <line x1="20" y1="55" x2="680" y2="55" stroke="#eee"/>
+
+        <!-- Sliding Hann-window bell (analysis) -->
+        <g>
+          <path d="M 0 80 Q 45 80 45 40 Q 45 80 90 80 Z" fill="#f59e0b" opacity="0.28" stroke="#f59e0b" stroke-width="1">
+            <animateTransform attributeName="transform" type="translate"
+              values="20 0;580 0;20 0"
+              keyTimes="0;0.5;1"
+              dur="6s" repeatCount="indefinite"/>
+          </path>
+        </g>
+        <text x="65" y="98" font-size="8" fill="#92400e" text-anchor="middle">
+          W=2048
+          <animateTransform attributeName="transform" type="translate"
+            values="20 0;580 0;20 0"
+            keyTimes="0;0.5;1"
+            dur="6s" repeatCount="indefinite"/>
+        </text>
+
+        <!-- Divider -->
+        <line x1="20" y1="115" x2="680" y2="115" stroke="#e5e5e5" stroke-dasharray="2 3"/>
+
+        <!-- Synthesis panel label -->
+        <text x="20" y="132" font-size="10" fill="#aaa" letter-spacing="0.1em">SYNTHESIS · overlap-add (16 Hann² windows sum to constant COLA)</text>
+
+        <!-- Multiple overlapping Hann bells sliding right together -->
+        <g opacity="0.55">
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="20 0;60 0;20 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="100 0;140 0;100 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="180 0;220 0;180 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="260 0;300 0;260 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="340 0;380 0;340 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="420 0;460 0;420 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+          <path d="M 0 195 Q 45 195 45 155 Q 45 195 90 195 Z" fill="#10b981" opacity="0.45">
+            <animateTransform attributeName="transform" type="translate"
+              values="500 0;540 0;500 0"
+              keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          </path>
+        </g>
+
+        <!-- COLA sum line — the reconstruction is a constant amplitude -->
+        <line x1="60" y1="145" x2="620" y2="145" stroke="#065f46" stroke-width="1.5" stroke-dasharray="4 2"/>
+        <text x="640" y="149" font-size="8" fill="#065f46">= COLA</text>
+
+        <!-- Hop annotation -->
+        <text x="20" y="212" font-size="8" fill="#065f46">hop H = W/16 = 128 samples · each frame overlaps 15 neighbours</text>
+      </g>
+    </svg>
+    <div class="caption">Above: analysis window (orange) walks across the signal frame by frame. Below: 16 shifted synthesis windows (green) sum to a constant (Constant-OverLap-Add) — perfect reconstruction when no gain modification is applied.</div>
+  </div>
 
   <h4>Log-MMSE gain (Ephraim &amp; Malah, 1985)</h4>
 
@@ -1485,6 +1598,60 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
 
   <p>where q = P(H<sub>0</sub>) = prior probability of noise-only (0.3 by default). Notably, because ξ is DD-tracked and stays high through a note's decay, P(H<sub>1</sub>|Y) also stays high during tail-out — so decays don't get choked off. Between-note silence, where ξ drops to zero, is where SPU deepens attenuation for a much cleaner rest.</p>
 
+  <div class="diagram">
+    <svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="9" fill="#333">
+        <!-- Panel 1: Signal envelope -->
+        <text x="20" y="15" font-size="9" fill="#aaa" letter-spacing="0.1em">SIGNAL ENVELOPE  |Y|</text>
+        <line x1="20" y1="60" x2="680" y2="60" stroke="#eee"/>
+        <path d="M 20 58 L 80 58 L 100 56 L 130 59 L 160 58 L 165 28 L 200 22 L 320 24 L 380 26 L 400 32 L 440 45 L 480 55 L 520 58 L 680 58"
+              stroke="#666" fill="none" stroke-width="1.5"/>
+
+        <!-- Panel 2: γ (jumpy dashed) + ξ (smooth solid) -->
+        <text x="20" y="85" font-size="9" fill="#aaa" letter-spacing="0.1em">γ (instantaneous — dashed) vs ξ (DD-smoothed — solid)</text>
+        <line x1="20" y1="130" x2="680" y2="130" stroke="#eee"/>
+        <!-- γ: jumpy -->
+        <path d="M 20 128 L 40 129 L 60 127 L 80 128 L 100 126 L 120 129 L 140 127 L 160 129 L 168 95 L 180 98 L 200 92 L 220 96 L 240 90 L 260 95 L 280 92 L 300 96 L 320 94 L 340 100 L 360 105 L 380 108 L 400 115 L 420 122 L 440 126 L 460 128 L 480 128 L 500 129 L 520 127 L 540 128 L 560 129 L 580 128 L 600 127 L 620 129 L 640 128 L 680 128"
+              stroke="#dc2626" fill="none" stroke-width="1" stroke-dasharray="3 2"/>
+        <!-- ξ: smooth, DD-tracked, rises smoothly and holds through decay -->
+        <path d="M 20 128 L 160 128 L 170 100 L 200 95 L 320 93 L 380 96 L 440 108 L 500 118 L 560 126 L 680 128"
+              stroke="#1e40af" fill="none" stroke-width="1.5"/>
+
+        <!-- Panel 3: P(H1|Y) -->
+        <text x="20" y="155" font-size="9" fill="#aaa" letter-spacing="0.1em">P(H₁ | Y) — signal-present probability</text>
+        <line x1="20" y1="200" x2="680" y2="200" stroke="#eee"/>
+        <line x1="20" y1="170" x2="680" y2="170" stroke="#eee" stroke-dasharray="2 3"/>
+        <text x="682" y="172" font-size="7" fill="#aaa">1</text>
+        <text x="682" y="202" font-size="7" fill="#aaa">0</text>
+        <path d="M 20 199 L 160 199 L 175 172 L 200 170 L 320 170 L 400 172 L 460 185 L 520 195 L 580 199 L 680 199"
+              stroke="#7c3aed" fill="none" stroke-width="1.5"/>
+
+        <!-- Panel 4: Final gain -->
+        <text x="20" y="225" font-size="9" fill="#aaa" letter-spacing="0.1em">FINAL GAIN g[k]</text>
+        <line x1="20" y1="270" x2="680" y2="270" stroke="#eee"/>
+        <line x1="20" y1="240" x2="680" y2="240" stroke="#eee" stroke-dasharray="2 3"/>
+        <text x="682" y="242" font-size="7" fill="#aaa">1</text>
+        <text x="682" y="272" font-size="7" fill="#aaa">min</text>
+        <path d="M 20 268 L 160 268 L 175 242 L 200 240 L 320 240 L 400 242 L 460 253 L 520 262 L 580 268 L 680 268"
+              stroke="#f59e0b" fill="none" stroke-width="2"/>
+
+        <!-- Moving time cursor -->
+        <line x1="20" y1="10" x2="20" y2="275" stroke="#111" stroke-width="1" opacity="0.4">
+          <animate attributeName="x1" values="20;680;20" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="x2" values="20;680;20" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+        </line>
+
+        <!-- Timeline labels along the bottom -->
+        <text x="90"  y="278" font-size="7" fill="#999">noise</text>
+        <text x="185" y="278" font-size="7" fill="#999">attack</text>
+        <text x="280" y="278" font-size="7" fill="#999">sustain</text>
+        <text x="425" y="278" font-size="7" fill="#999">decay</text>
+        <text x="600" y="278" font-size="7" fill="#999">noise</text>
+      </g>
+    </svg>
+    <div class="caption">One "note event" traversed by the estimator. During silence γ jumps around at the noise floor but ξ tracks it smoothly. On the attack γ leaps up; ξ follows quickly. During decay γ falls back but ξ HOLDS — that's the DD memory keeping P(H₁|Y) high, so the tail doesn't get choked. In the following silence both drop, P(H₁|Y) collapses to ~0, and SPU deepens attenuation.</div>
+  </div>
+
   <h4>Post-processing: freq median + asymmetric time smoothing</h4>
 
   <p>Two lightweight filters clean up the remaining artifacts of the raw statistical gain map.</p>
@@ -1495,6 +1662,73 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
   </div>
   <p>Isolated bins that stand out from their neighbors — the seeds of "chirp" musical noise — get replaced by the middle of their local group. DC and Nyquist are left untouched; done in-place with a rolling window keeping the previous raw value.</p>
 
+  <div class="diagram">
+    <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="10" fill="#333">
+        <!-- Before / After labels -->
+        <text x="20"  y="18" font-size="10" fill="#666" letter-spacing="0.1em">BEFORE — raw g<tspan font-size="7">k</tspan>  (one spike bin ≈ chirp seed)</text>
+        <text x="20"  y="118" font-size="10" fill="#666" letter-spacing="0.1em">AFTER  — median(g<tspan font-size="7">k−1</tspan>, g<tspan font-size="7">k</tspan>, g<tspan font-size="7">k+1</tspan>)</text>
+        <line x1="20" y1="95"  x2="680" y2="95"  stroke="#eee"/>
+        <line x1="20" y1="195" x2="680" y2="195" stroke="#eee"/>
+
+        <!-- BEFORE bars: nine bins, bin 5 is the spike (bin 5 = index 4, x offset) -->
+        <g fill="#94a3b8">
+          <rect x="60"  y="70" width="50" height="25"/>
+          <rect x="130" y="65" width="50" height="30"/>
+          <rect x="200" y="72" width="50" height="23"/>
+          <rect x="270" y="68" width="50" height="27"/>
+        </g>
+        <!-- spike bin, highlighted red -->
+        <rect x="340" y="30" width="50" height="65" fill="#dc2626"/>
+        <text x="365" y="25" text-anchor="middle" font-size="9" fill="#dc2626">outlier</text>
+        <g fill="#94a3b8">
+          <rect x="410" y="66" width="50" height="29"/>
+          <rect x="480" y="70" width="50" height="25"/>
+          <rect x="550" y="63" width="50" height="32"/>
+          <rect x="620" y="68" width="50" height="27"/>
+        </g>
+
+        <!-- Sliding 3-tap window highlight in the BEFORE panel: -->
+        <rect x="335" y="26" width="60" height="72" fill="none" stroke="#111" stroke-width="1.2" opacity="0.7">
+          <animate attributeName="x"
+            values="55;125;195;265;335;405;475;545;615;615;55;55"
+            keyTimes="0;0.08;0.16;0.24;0.32;0.40;0.48;0.56;0.64;0.90;0.98;1"
+            dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="width"
+            values="130;130;130;130;130;130;130;130;60;60;130;130"
+            keyTimes="0;0.08;0.16;0.24;0.32;0.40;0.48;0.56;0.64;0.90;0.98;1"
+            dur="6s" repeatCount="indefinite"/>
+        </rect>
+
+        <!-- AFTER bars: spike replaced by median (~ same height as neighbors) -->
+        <g fill="#94a3b8">
+          <rect x="60"  y="170" width="50" height="25"/>
+          <rect x="130" y="165" width="50" height="30"/>
+          <rect x="200" y="172" width="50" height="23"/>
+          <rect x="270" y="168" width="50" height="27"/>
+        </g>
+        <!-- former spike bin, now green + short (median of neighbors) -->
+        <rect x="340" y="167" width="50" height="28" fill="#059669">
+          <animate attributeName="height" values="65;65;28;28;65;65" keyTimes="0;0.4;0.5;0.9;0.98;1" dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="y"      values="130;130;167;167;130;130" keyTimes="0;0.4;0.5;0.9;0.98;1" dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="fill"   values="#dc2626;#dc2626;#059669;#059669;#dc2626;#dc2626" keyTimes="0;0.4;0.5;0.9;0.98;1" dur="6s" repeatCount="indefinite"/>
+        </rect>
+        <g fill="#94a3b8">
+          <rect x="410" y="166" width="50" height="29"/>
+          <rect x="480" y="170" width="50" height="25"/>
+          <rect x="550" y="163" width="50" height="32"/>
+          <rect x="620" y="168" width="50" height="27"/>
+        </g>
+
+        <!-- freq axis -->
+        <text x="60"  y="212" font-size="8" fill="#999">k−4</text>
+        <text x="345" y="212" font-size="8" fill="#999" text-anchor="start">k</text>
+        <text x="620" y="212" font-size="8" fill="#999">k+4</text>
+      </g>
+    </svg>
+    <div class="caption">The 3-tap window (black box) slides bin by bin. When it hits the outlier at bin <em>k</em>, the median of the three drops the spike to neighbor level — a single Math op per bin, no state, and it kills the isolated chirp bins that would otherwise fizzle away as musical noise.</div>
+  </div>
+
   <p><strong>Asymmetric exponential time smoothing on the gain map:</strong></p>
   <div class="math">
     g<sub>k</sub><sup>(m)</sup> = w · g<sub>k</sub><sup>(m−1)</sup> + (1 − w) · g<sub>k</sub><sup>(m)</sup>,   where<br>
@@ -1502,6 +1736,50 @@ v.setInt16(off, s < 0 ? s * 32768 : s * 32767, true);
        w = 0.75  otherwise                        (gain falling — slow release)
   </div>
   <p>The rising branch is fast, so attacks aren't choked off; the falling branch is slow, so gain doesn't wobble around during sustained content and note tails aren't cut short. The whole thing is one scalar of state per bin and adds one Math op per bin per frame.</p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 700 200" xmlns="http://www.w3.org/2000/svg">
+      <g font-family="SF Mono, monospace" font-size="10" fill="#333">
+        <text x="20"  y="15" font-size="9" fill="#aaa" letter-spacing="0.1em">gain over frames (one bin)</text>
+        <line x1="20" y1="170" x2="680" y2="170" stroke="#eee"/>
+        <line x1="20" y1="50"  x2="680" y2="50"  stroke="#eee" stroke-dasharray="2 3"/>
+        <text x="682" y="52"  font-size="7" fill="#aaa">1</text>
+        <text x="682" y="172" font-size="7" fill="#aaa">0</text>
+
+        <!-- Raw jagged gain (bounces up + down instantly, with noise) -->
+        <path d="M 20 165 L 40 165 L 60 168 L 80 164 L 100 167 L 120 165 L 140 168 L 160 165
+                 L 168 52  L 178 58  L 190 52  L 210 55  L 240 50  L 280 55  L 320 52  L 360 58
+                 L 380 55  L 400 168 L 420 55  L 440 168 L 460 55  L 480 168 L 500 55
+                 L 520 165 L 540 168 L 560 164 L 580 167 L 600 165 L 620 168 L 680 165"
+              stroke="#94a3b8" fill="none" stroke-width="1.2" stroke-dasharray="3 2"/>
+
+        <!-- Smoothed gain: fast attack (nearly matches rise), slow release (long decay after signal drops) -->
+        <path d="M 20 165 L 160 165
+                 L 170 78 L 180 65 L 195 56 L 220 53 L 380 53
+                 L 400 60 L 440 75 L 500 105 L 560 140 L 620 160 L 680 165"
+              stroke="#f59e0b" fill="none" stroke-width="2.2"/>
+
+        <!-- Time cursor -->
+        <line x1="20" y1="10" x2="20" y2="175" stroke="#111" stroke-width="1" opacity="0.4">
+          <animate attributeName="x1" values="20;680;20" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+          <animate attributeName="x2" values="20;680;20" keyTimes="0;0.5;1" dur="6s" repeatCount="indefinite"/>
+        </line>
+
+        <!-- Labels for regions -->
+        <text x="80"  y="192" font-size="8" fill="#999">noise (both low)</text>
+        <text x="185" y="192" font-size="8" fill="#999">fast attack →</text>
+        <text x="290" y="192" font-size="8" fill="#999">sustain (raw dithers; smooth holds)</text>
+        <text x="510" y="192" font-size="8" fill="#999">← slow release</text>
+
+        <!-- Legend -->
+        <line x1="470" y1="22" x2="490" y2="22" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="3 2"/>
+        <text x="495" y="25" font-size="8" fill="#666">raw g (post-median)</text>
+        <line x1="470" y1="34" x2="490" y2="34" stroke="#f59e0b" stroke-width="2.2"/>
+        <text x="495" y="37" font-size="8" fill="#666">smoothed g (attack 0.20 / release 0.75)</text>
+      </g>
+    </svg>
+    <div class="caption">Raw per-bin gain (grey dashed) flips instantly, which is why unsmoothed output has that wobbly musical-noise quality. The smoothed gain (orange) latches on quickly at the note attack, holds through sustained content while ignoring the raw wobble, and eases down slowly on release — the tail rings out cleanly instead of getting chopped.</div>
+  </div>
 
   <h4>Noise profile capture and audition</h4>
 
