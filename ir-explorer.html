@@ -992,7 +992,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 59;
+    const BUILD_NO = 60;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2821,7 +2821,7 @@
 
         const isActive = mode === activeMode;
         ctx.strokeStyle = alignColor(mode);
-        ctx.globalAlpha = isActive ? 1.0 : 0.5;
+        ctx.globalAlpha = isActive ? 1.0 : 0.3;
         ctx.lineWidth   = isActive ? 2.0 : 1.2;
         ctx.beginPath();
         let started = false;
