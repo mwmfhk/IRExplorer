@@ -992,7 +992,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 60;
+    const BUILD_NO = 61;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -1476,7 +1476,7 @@
       const currentMode = side === 'left' ? leftAlignMode : rightAlignMode;
       selectEl.innerHTML = '';
       const opts = [['none', 'No Correction'], ['peak', 'Align Peak']];
-      for (let i = 0; i < slotCount; i++) opts.push(['cross-' + i, `Cross Align ${i + 1}`]);
+      if (slotCount >= 2) opts.push(['cross', 'Cross Align']);
       opts.push(['min-phase', 'Min-Phase']);
       for (const [v, l] of opts) {
         const o = document.createElement('option');
@@ -2023,8 +2023,8 @@
           return { channels };
         });
       }
-      if (mode.startsWith('cross-')) {
-        const refIdx = Math.max(0, Math.min(parseInt(mode.slice(6), 10), slots.length - 1));
+      if (mode === 'cross') {
+        const refIdx = 0;
         const refCh = slots[refIdx].buffer.getChannelData(0);
         const lags = slots.map((s, i) => i === refIdx ? 0 : crossCorrLag(refCh, s.buffer.getChannelData(0)));
         const minLag = Math.min(0, ...lags);
@@ -2573,16 +2573,14 @@
     function availableAlignModes(side) {
       const slotCount = (side === 'left' ? irSlots : rightIrSlots).length;
       const modes = ['none', 'peak'];
-      for (let i = 0; i < slotCount; i++) modes.push('cross-' + i);
+      if (slotCount >= 2) modes.push('cross');
       modes.push('min-phase');
       return modes;
     }
 
     // Color per alignment mode for the freq-domain overlay.
-    const ALIGN_BASE_COLORS = { 'none': '#94a3b8', 'peak': '#f59e0b', 'min-phase': '#7c3aed' };
-    const CROSS_COLORS = ['#059669', '#0284c7', '#db2777', '#0891b2', '#65a30d', '#c026d3', '#0d9488', '#a16207'];
+    const ALIGN_BASE_COLORS = { 'none': '#94a3b8', 'peak': '#f59e0b', 'cross': '#059669', 'min-phase': '#7c3aed' };
     function alignColor(mode) {
-      if (mode.startsWith('cross-')) return CROSS_COLORS[parseInt(mode.slice(6), 10) % CROSS_COLORS.length];
       return ALIGN_BASE_COLORS[mode] || '#666';
     }
 
@@ -2655,9 +2653,8 @@
     });
     window.addEventListener('resize', () => { if (irPlotModal.classList.contains('visible')) drawIrPlot(); });
 
-    const MODE_LABELS = { 'none': 'No Correction', 'peak': 'Align Peak', 'min-phase': 'Min-Phase' };
+    const MODE_LABELS = { 'none': 'No Correction', 'peak': 'Align Peak', 'cross': 'Cross Align', 'min-phase': 'Min-Phase' };
     function alignModeLabel(m) {
-      if (m.startsWith('cross-')) return 'Cross Align ' + (parseInt(m.slice(6), 10) + 1);
       return MODE_LABELS[m] || m;
     }
 
