@@ -526,6 +526,28 @@
       font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase;
       color: #999; text-align: center;
     }
+    .modal-phase-row {
+      justify-content: flex-start;
+      padding: 0.1rem 0 0.15rem;
+    }
+    .freq-legend {
+      display: none;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.9rem;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.68rem;
+      color: #555;
+    }
+    .freq-legend.visible { display: flex; }
+    .freq-legend .chip {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      opacity: 0.7;
+    }
+    .freq-legend .chip.active { opacity: 1; color: #111; font-weight: 600; }
+    .freq-legend .swatch {
+      display: inline-block; width: 18px; height: 2px; border-radius: 1px;
+    }
+    .freq-legend .chip.active .swatch { height: 3px; }
     .btn-bypass:hover { background: #e8e8e8; }
     .btn-bypass.bypassed { background: #fef3c7; color: #92400e; border-color: #fde68a; }
 
@@ -926,7 +948,12 @@
         </div>
         <button class="modal-close" id="irPlotClose" aria-label="Close">✕</button>
       </div>
+      <div class="phase-row modal-phase-row">
+        <span class="phase-label">Phase Correction :</span>
+        <select class="btn-export-select" id="alignSelectModal"></select>
+      </div>
       <canvas class="modal-canvas" id="irPlotCanvas"></canvas>
+      <div class="freq-legend" id="freqLegend"></div>
       <div class="modal-info" id="irPlotInfo"></div>
     </div>
   </div>
@@ -965,7 +992,7 @@
   <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
   <script>
     // ── Build number (bumped on every commit) ─────────────────────────────────
-    const BUILD_NO = 58;
+    const BUILD_NO = 59;
     const buildHtml = 'build ' + BUILD_NO +
       ' <span class="sep">|</span> <a class="tech-link" href="algorithms.html">Tech Details</a>';
     document.getElementById('buildNoMobile').innerHTML  = buildHtml;
@@ -2523,20 +2550,76 @@
     );
     alignSelect.addEventListener('change', () => {
       leftAlignMode = alignSelect.value; syncConvolvers('left');
+      mirrorAlignToModal('left');
     });
     alignSelectR.addEventListener('change', () => {
       rightAlignMode = alignSelectR.value; syncConvolvers('right');
+      mirrorAlignToModal('right');
     });
 
     // ── IR plot modal ─────────────────────────────────────────────────────────
-    const irPlotModal  = document.getElementById('irPlotModal');
-    const irPlotClose  = document.getElementById('irPlotClose');
-    const irPlotCanvas = document.getElementById('irPlotCanvas');
-    const irPlotInfo   = document.getElementById('irPlotInfo');
-    const tabTime      = document.getElementById('tabTime');
-    const tabFreq      = document.getElementById('tabFreq');
+    const irPlotModal      = document.getElementById('irPlotModal');
+    const irPlotClose      = document.getElementById('irPlotClose');
+    const irPlotCanvas     = document.getElementById('irPlotCanvas');
+    const irPlotInfo       = document.getElementById('irPlotInfo');
+    const tabTime          = document.getElementById('tabTime');
+    const tabFreq          = document.getElementById('tabFreq');
+    const alignSelectModal = document.getElementById('alignSelectModal');
+    const freqLegend       = document.getElementById('freqLegend');
     let irPlotSide = 'left';
     let irPlotMode = 'time';
+
+    // Available alignment modes for a given side, in menu order.
+    function availableAlignModes(side) {
+      const slotCount = (side === 'left' ? irSlots : rightIrSlots).length;
+      const modes = ['none', 'peak'];
+      for (let i = 0; i < slotCount; i++) modes.push('cross-' + i);
+      modes.push('min-phase');
+      return modes;
+    }
+
+    // Color per alignment mode for the freq-domain overlay.
+    const ALIGN_BASE_COLORS = { 'none': '#94a3b8', 'peak': '#f59e0b', 'min-phase': '#7c3aed' };
+    const CROSS_COLORS = ['#059669', '#0284c7', '#db2777', '#0891b2', '#65a30d', '#c026d3', '#0d9488', '#a16207'];
+    function alignColor(mode) {
+      if (mode.startsWith('cross-')) return CROSS_COLORS[parseInt(mode.slice(6), 10) % CROSS_COLORS.length];
+      return ALIGN_BASE_COLORS[mode] || '#666';
+    }
+
+    function populateModalAlignSelect() {
+      const modes = availableAlignModes(irPlotSide);
+      const active = irPlotSide === 'left' ? leftAlignMode : rightAlignMode;
+      alignSelectModal.innerHTML = '';
+      for (const m of modes) {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = alignModeLabel(m);
+        alignSelectModal.appendChild(o);
+      }
+      alignSelectModal.value = modes.includes(active) ? active : 'none';
+    }
+
+    // Called by the outside dropdowns after they've applied the mode change,
+    // so the modal's own dropdown stays in sync while it's open.
+    function mirrorAlignToModal(side) {
+      if (!irPlotModal.classList.contains('visible')) return;
+      if (irPlotSide !== side) return;
+      populateModalAlignSelect();
+      drawIrPlot();
+    }
+
+    alignSelectModal.addEventListener('change', () => {
+      const mode = alignSelectModal.value;
+      if (irPlotSide === 'left') {
+        leftAlignMode = mode;
+        alignSelect.value = mode;
+        syncConvolvers('left');
+      } else {
+        rightAlignMode = mode;
+        alignSelectR.value = mode;
+        syncConvolvers('right');
+      }
+      drawIrPlot();
+    });
 
     function openIrPlot(side) {
       const slots = side === 'left' ? irSlots : rightIrSlots;
@@ -2545,6 +2628,8 @@
       irPlotMode = 'time';
       tabTime.classList.add('active');
       tabFreq.classList.remove('active');
+      populateModalAlignSelect();
+      freqLegend.classList.remove('visible');
       irPlotModal.classList.add('visible');
       // Defer draw so layout is settled and canvas has its final size
       requestAnimationFrame(drawIrPlot);
@@ -2581,9 +2666,6 @@
       const bp    = irPlotSide === 'left' ? blendPt : rightBlendPt;
       const mode  = irPlotSide === 'left' ? leftAlignMode : rightAlignMode;
       if (slots.length === 0) return;
-      const blended = computeBlendedIR(slots, bp, mode);
-      const samples = blended.chData[0];
-      const sr = blended.sr;
 
       // Resize canvas to displayed size (DPR-scaled)
       const dpr = window.devicePixelRatio || 1;
@@ -2599,12 +2681,15 @@
       const modeName = alignModeLabel(mode);
 
       if (irPlotMode === 'time') {
-        drawTimeDomain(ctx, W, H, samples, sr);
-        const ms = (blended.numSamples / sr * 1000).toFixed(1);
-        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · ${blended.numSamples} samples (${ms} ms @ ${sr} Hz)`;
+        const blended = computeBlendedIR(slots, bp, mode);
+        drawTimeDomain(ctx, W, H, blended.chData[0], blended.sr);
+        freqLegend.classList.remove('visible');
+        const ms = (blended.numSamples / blended.sr * 1000).toFixed(1);
+        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · ${blended.numSamples} samples (${ms} ms @ ${blended.sr} Hz)`;
       } else {
-        drawFreqDomain(ctx, W, H, samples, sr);
-        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · ${modeName} · magnitude spectrum (peak-normalized to 0 dB)`;
+        const sr = slots[0].buffer.sampleRate;
+        drawFreqDomain(ctx, W, H, slots, bp, sr, mode);
+        irPlotInfo.textContent = `${sideName} · ${slots.length} IR${slots.length > 1 ? 's' : ''} · magnitude spectra, each peak-normalized to 0 dB · active: ${modeName}`;
       }
     }
 
@@ -2667,20 +2752,16 @@
     }
 
     // ── Frequency-domain magnitude plot ──────────────────────────────────────
-    function drawFreqDomain(ctx, W, H, samples, sr) {
+    // Overlays one trace per available phase-correction mode; the active mode
+    // is drawn bolder and fully opaque on top.
+    function drawFreqDomain(ctx, W, H, slots, bp, sr, activeMode) {
       const padL = 44, padR = 12, padT = 12, padB = 26;
       const plotW = W - padL - padR;
       const plotH = H - padT - padB;
 
-      // FFT the samples (zero-padded to at least 8192 for smooth curve)
-      const M = nextPow2(Math.max(samples.length, 8192));
-      const re = new Float32Array(M), im = new Float32Array(M);
-      re.set(samples);
-      fftRadix2(re, im, false);
-
       const nyquist = sr / 2;
       const fMin = 20, fMax = Math.min(nyquist, 20000);
-      const dbMin = -60, dbMax = 0;   // peak-normalized: top = 0 dB
+      const dbMin = -60, dbMax = 0;
       const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
 
       // dB grid + labels
@@ -2710,37 +2791,59 @@
       ctx.strokeStyle = '#eee';
       ctx.beginPath(); ctx.moveTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
 
-      // Pass 1: compute dB at each pixel column, tracking the peak so we can
-      // peak-normalize the trace to 0 dB (prevents the curve clipping at the top).
-      const dbs = new Array(plotW + 1);
-      let maxDb = -Infinity;
-      for (let px = 0; px <= plotW; px++) {
-        const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
-        const bin = f * M / sr;
-        const b0 = Math.floor(bin), b1 = b0 + 1;
-        if (b0 < 1 || b1 >= M / 2) { dbs[px] = null; continue; }
-        const t = bin - b0;
-        const m0 = Math.sqrt(re[b0]*re[b0] + im[b0]*im[b0]);
-        const m1 = Math.sqrt(re[b1]*re[b1] + im[b1]*im[b1]);
-        const mag = m0 + (m1 - m0) * t;
-        const db = 20 * Math.log10(Math.max(mag, 1e-10));
-        dbs[px] = db;
-        if (db > maxDb) maxDb = db;
-      }
+      // Draw non-active modes first, active mode last so it sits on top.
+      const modes = availableAlignModes(irPlotSide);
+      const orderedModes = modes.filter(m => m !== activeMode).concat([activeMode]);
 
-      // Pass 2: draw the normalized trace (subtract peak so top = 0 dB).
-      ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      let started = false;
-      for (let px = 0; px <= plotW; px++) {
-        if (dbs[px] === null) continue;
-        let db = dbs[px] - maxDb;
-        if (db < dbMin) db = dbMin;
-        const x = padL + px;
-        const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
-        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      for (const mode of orderedModes) {
+        const blended = computeBlendedIR(slots, bp, mode);
+        const samples = blended.chData[0];
+        const M = nextPow2(Math.max(samples.length, 8192));
+        const re = new Float32Array(M), im = new Float32Array(M);
+        re.set(samples);
+        fftRadix2(re, im, false);
+
+        const dbs = new Array(plotW + 1);
+        let maxDb = -Infinity;
+        for (let px = 0; px <= plotW; px++) {
+          const f = Math.pow(10, logMin + (px / plotW) * (logMax - logMin));
+          const bin = f * M / sr;
+          const b0 = Math.floor(bin), b1 = b0 + 1;
+          if (b0 < 1 || b1 >= M / 2) { dbs[px] = null; continue; }
+          const t = bin - b0;
+          const m0 = Math.sqrt(re[b0]*re[b0] + im[b0]*im[b0]);
+          const m1 = Math.sqrt(re[b1]*re[b1] + im[b1]*im[b1]);
+          const mag = m0 + (m1 - m0) * t;
+          const db = 20 * Math.log10(Math.max(mag, 1e-10));
+          dbs[px] = db;
+          if (db > maxDb) maxDb = db;
+        }
+
+        const isActive = mode === activeMode;
+        ctx.strokeStyle = alignColor(mode);
+        ctx.globalAlpha = isActive ? 1.0 : 0.5;
+        ctx.lineWidth   = isActive ? 2.0 : 1.2;
+        ctx.beginPath();
+        let started = false;
+        for (let px = 0; px <= plotW; px++) {
+          if (dbs[px] === null) continue;
+          let db = dbs[px] - maxDb;
+          if (db < dbMin) db = dbMin;
+          const x = padL + px;
+          const y = padT + plotH * (dbMax - db) / (dbMax - dbMin);
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      // Populate the HTML legend below the canvas.
+      const chips = modes.map(m => {
+        const active = m === activeMode ? ' active' : '';
+        return `<span class="chip${active}"><span class="swatch" style="background:${alignColor(m)}"></span>${alignModeLabel(m)}</span>`;
+      }).join('');
+      freqLegend.innerHTML = chips;
+      freqLegend.classList.add('visible');
     }
 
     // ── Unified document listeners ─────────────────────────────────────────────
